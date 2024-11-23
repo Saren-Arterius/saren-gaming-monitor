@@ -8,14 +8,14 @@ export interface LastStats {
 export interface SystemMetrics {
     temperatures: {
         cpu: number;
-        gpu: number;
+        gpu?: number;
         ssd: number;
     };
     usage: {
         cpu?: number;
-        gpu: number;
+        gpu?: number;
         ram: number;
-        vram: number;
+        vram?: number;
     };
     usageMB: {
         ram: number;
@@ -29,14 +29,15 @@ export interface SystemMetrics {
     };
     fanSpeed: {
         cpu: number;
-        motherboard: number;
-    };
+        motherboard?: number;
+        ssd?: number;
+    }
     frequencies: {
         cpu: number[];
-        gpuCore: number;
+        gpuCore?: number;
     };
     pwr: {
-        gpu: number;
+        gpu?: number;
     };
     lastUpdate: number;
 }

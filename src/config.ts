@@ -5,69 +5,66 @@ export const CONFIG = {
         SYSTEM_INFO: {
             hostname: execSync("hostname").toString().trim(),
             os: execSync('cat /etc/os-release | grep PRETTY_NAME | cut -d\\" -f2').toString().trim(),
-            cpu: 'AMD Ryzen 7 9800X3D',
-            gpu: 'NVIDIA GeForce RTX 4090',
-            case: 'Lian Li A4-H2O',
+            cpu: 'Intel® Core™ i9-13900H',
+            case: 'Minisforum MS-01',
         },
 
         GAUGE_LIMITS: {
             temperature: {
-                cpu: { min: 30, max: 95 },
-                gpu: { min: 30, max: 80 },
-                ssd: { min: 30, max: 70 }
+                cpu: { min: 30, max: 90 },
+                ssd: { min: 30, max: 76 }, // m2
+                ssd2: { min: 30, max: 84 } // u2
             },
             io: {
-                diskRead: { max: 3.75 * 1024 * 1024 * 1024 }, // PCIE 3.0 NVME SSD
-                diskWrite: { max: 3.75 * 1024 * 1024 * 1024 }, 
-                networkRx: { max: 1.25 * 1024 * 1024 * 1024 }, // 10Gbps Network
-                networkTx: { max: 1.25 * 1024 * 1024 * 1024 }
+                diskRead: { max: 11820 * 1024 * 1024 }, // PCIE 3.0 + PCIE 4.0 NVME SSD
+                diskWrite: { max: 11820 * 1024 * 1024 }, 
+                networkRx: { max: 500 * 1024 * 1024 }, // 4x1000 Network
+                networkTx: { max: 500 * 1024 * 1024 }
             },
             fanSpeed: {
-                cpu: { max: 2200 },
-                motherboard: { max: 12000 }
+                cpu: { max: 5000 },
+                ssd: { max: 5000 }
             }
         },
     },
     // lm_sensors json output, See `sensors -j`
     sensors: {
         cpu: {
-            temperature: 'k10temp-pci-00c3',
-            tempField: 'Tctl',
+            temperature: 'coretemp-isa-0000',
+            tempField: 'Package id 0',
             tempInput: 'temp1_input'
         },
         ssd: {
-            temperature: 'nvme-pci-0200',
+            temperature: 'nvme-pci-5800',
+            tempField: 'Composite',
+            tempInput: 'temp1_input'
+        },
+        ssd2: {
+            temperature: 'nvme-pci-0100',
             tempField: 'Composite',
             tempInput: 'temp1_input'
         },
         fans: {
-            controller: 'nct6687-isa-0a20',
-            cpu: {
+            controller: 'nct6798-isa-0a20',
+            ssd: {
                 id: 'fan1',
                 input: 'fan1_input'
             },
-            motherboard: {
-                id: 'fan4',
-                input: 'fan4_input'
+            cpu: {
+                id: 'fan2',
+                input: 'fan2_input'
             }
         }
     },
     network: {
-        interface: 'enp5s0'
+        interface: 'ext1'
     },
     server: {
         port: 3000,
         corsOrigin: "*",
         corsMethods: ["GET", "POST"]
     },
-
-
     commands: {
-        nvidia: {
-            command: 'nvidia-smi',
-            params: '--query-gpu=name,temperature.gpu,utilization.gpu,memory.used,memory.total,clocks.current.graphics,power.draw',
-            format: '--format=csv,noheader'
-        },
         sensors: {
             command: 'sensors -j'
         }

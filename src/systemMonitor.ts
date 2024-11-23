@@ -11,39 +11,42 @@ export class SystemMonitor {
     private metrics: SystemMetrics | null = null;
 
     async collectData() {
-        const nvidiaCmdStr = `${CONFIG.commands.nvidia.command} ${CONFIG.commands.nvidia.params} ${CONFIG.commands.nvidia.format}`;
         const [
-            { stdout: gpu },
             { stdout: sensors },
             stat,
             meminfo,
             diskstats,
             netdev,
-            cpuinfo
+            cpuinfo,
+            ssdStats,
+            ssd2Stats
         ] = await Promise.all([
-            execAsync(nvidiaCmdStr),
             execAsync(CONFIG.commands.sensors.command),
             readFile(CONFIG.systemFiles.stat).then(b => b.toString()),
             readFile(CONFIG.systemFiles.meminfo).then(b => b.toString()),
             readFile(CONFIG.systemFiles.diskstats).then(b => b.toString()),
             readFile(CONFIG.systemFiles.netdev).then(b => b.toString()),
-            readFile(CONFIG.systemFiles.cpuinfo).then(b => b.toString())
+            readFile(CONFIG.systemFiles.cpuinfo).then(b => b.toString()),
+            execAsync('df -ml / | tail -n 1'),
+            execAsync('df -ml /mnt/storage | tail -n 1'),
         ]);
 
         return {
-            gpu: gpu.split(',').map(str => str.trim()),
             sensors: JSON.parse(sensors),
             stat: stat.split('\n'),
             meminfo: meminfo.split('\n'),
             diskstats: diskstats.split('\n'),
-            netdev: netdev.split('\n'),
-            cpuinfo: cpuinfo.split('\n')
+            netdev: netdev.split('\n').map(l => l.trim()),
+            cpuinfo: cpuinfo.split('\n'),
+            ssdStats: ssdStats.stdout.split(' '),
+            ssd2Stats: ssd2Stats.stdout.split(' ')
         };
     }
 
     transformSystemInfo(data) {
         const now = Date.now();
 
+        console.log(data.ssdStats)
         let total = data.meminfo.find(line => line.startsWith('MemTotal:')).split(/\s+/)[1] / 1024;
         let avail = data.meminfo.find(line => line.startsWith('MemAvailable:')).split(/\s+/)[1] / 1024;
         let memUsed = total - avail;
@@ -54,18 +57,25 @@ export class SystemMonitor {
         const result = {
             temperatures: {
                 cpu: Math.round(parseFloat(data.sensors[CONFIG.sensors.cpu.temperature][CONFIG.sensors.cpu.tempField][CONFIG.sensors.cpu.tempInput])),
-                gpu: parseFloat(data.gpu[1]),
-                ssd: Math.round(parseFloat(data.sensors[CONFIG.sensors.ssd.temperature][CONFIG.sensors.ssd.tempField][CONFIG.sensors.ssd.tempInput]))
+                gpu: undefined,
+                ssd: Math.round(parseFloat(data.sensors[CONFIG.sensors.ssd.temperature][CONFIG.sensors.ssd.tempField][CONFIG.sensors.ssd.tempInput])),
+                ssd2: Math.round(parseFloat(data.sensors[CONFIG.sensors.ssd2.temperature][CONFIG.sensors.ssd2.tempField][CONFIG.sensors.ssd2.tempInput]))
             },
             usage: {
                 cpu: 0,
-                gpu: parseInt(data.gpu[2]),
+                gpu: undefined,
                 ram: Math.round(memUsage * 100),
-                vram: Math.round(parseInt(data.gpu[3]) / parseInt(data.gpu[4]) * 100)
+                vram: undefined,
+                ssd: parseInt(data.ssdStats[6]),
+                ssd2: parseInt(data.ssd2Stats[6]),
             },
             usageMB: {
                 ram: Math.round(memUsed),
-                vram: parseInt(data.gpu[3])
+                vram: undefined,
+            },
+            usageGB: {
+                ssd: Math.round(parseInt(data.ssdStats[2]) / 1024),
+                ssd2: Math.round(parseInt(data.ssd2Stats[2]) / 1024),
             },
             io: {
                 diskRead: 0,
@@ -75,14 +85,12 @@ export class SystemMonitor {
             },
             fanSpeed: {
                 cpu: parseInt(data.sensors[CONFIG.sensors.fans.controller][CONFIG.sensors.fans.cpu.id][CONFIG.sensors.fans.cpu.input]),
-                motherboard: parseInt(data.sensors[CONFIG.sensors.fans.controller][CONFIG.sensors.fans.motherboard.id][CONFIG.sensors.fans.motherboard.input])
+                ssd: parseInt(data.sensors[CONFIG.sensors.fans.controller][CONFIG.sensors.fans.ssd.id][CONFIG.sensors.fans.ssd.input])
             },
             frequencies: {
-                cpu: cpuMhzs,
-                gpuCore: parseInt(data.gpu[5]),
+                cpu: cpuMhzs
             },
             pwr: {
-                gpu: parseFloat(data.gpu[6]),
             },
             lastUpdate: now
         };
@@ -102,15 +110,20 @@ export class SystemMonitor {
 
             result.usage.cpu = Math.round((1 - idleDiff / totalDiff) * 100);
 
-            const prevDisk = this.lastStats.diskstats[0].split(' ').filter(x => x);
-            const currentDisk = data.diskstats[0].split(' ').filter(x => x);
             const timeDiff = (now - this.lastStats.lastUpdate) / 1000;
 
-            const readBytes = (parseInt(currentDisk[5]) - parseInt(prevDisk[5])) * 512 / timeDiff;
-            const writeBytes = (parseInt(currentDisk[9]) - parseInt(prevDisk[9])) * 512 / timeDiff;
+            const prevDiskStorage = this.lastStats.diskstats[0].split(' ').filter(x => x);
+            const currentDiskStorage = data.diskstats[0].split(' ').filter(x => x);
+            const readBytesStorage = (parseInt(currentDiskStorage[5]) - parseInt(prevDiskStorage[5])) * 512 / timeDiff;
+            const writeBytesStorage = (parseInt(currentDiskStorage[9]) - parseInt(prevDiskStorage[9])) * 512 / timeDiff;
 
-            result.io.diskRead = Math.round(readBytes);
-            result.io.diskWrite = Math.round(writeBytes);
+            const prevDiskSystem = this.lastStats.diskstats[4].split(' ').filter(x => x);
+            const currentDiskSystem = data.diskstats[4].split(' ').filter(x => x);
+            const readBytesSystem = (parseInt(currentDiskSystem[5]) - parseInt(prevDiskSystem[5])) * 512 / timeDiff;
+            const writeBytesSystem = (parseInt(currentDiskSystem[9]) - parseInt(prevDiskSystem[9])) * 512 / timeDiff;
+
+            result.io.diskRead = Math.round(readBytesStorage + readBytesSystem);
+            result.io.diskWrite = Math.round(writeBytesStorage + writeBytesSystem);
 
             const networkStats = data.netdev.find(line => line.startsWith(`${CONFIG.network.interface}:`));
             const prevNetworkStats = this.lastStats.netdev.find(line => line.startsWith(`${CONFIG.network.interface}:`));
