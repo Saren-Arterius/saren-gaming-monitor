@@ -7,10 +7,6 @@
   <link rel="stylesheet" href="https://unpkg.com/mvp.css" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
-    #root {
-      width: 100%;
-    }
-
     body {
       background-color: rgb(2, 2, 5);
       justify-content: center;
@@ -20,10 +16,16 @@
       color: white;
     }
 
-    .container {
+    #root {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      flex-direction: column;
+    }
 
-      padding-left: 20px;
-      padding-right: 20px;
+    .container {
+      width: calc(100vw - 40px);
+      max-width: 600px;
     }
 
     .section {
@@ -82,8 +84,8 @@
 
 
     .gauge-cover-2 {
-      width: 102%;
-      height: 102%;
+      width: 105%;
+      height: 105%;
       border-radius: 50%;
       position: absolute;
       top: 50%;
@@ -116,6 +118,15 @@
       inset: 0px;
       height: 100vh;
     }
+
+    @media screen and (max-width: 540px) {
+
+      /* Your CSS rules here */
+      .container::before {
+        backdrop-filter: blur(24px) brightness(4) saturate(2);
+      }
+    }
+
 
     .gauge-value {
       color: white;
@@ -216,6 +227,8 @@
         }
       };
 
+      windowWidth = window.innerWidth;
+
       temperatures = {
         cpu: 30,
         gpu: 50,
@@ -256,8 +269,9 @@
       }
     }
 
-
     const store = new Store();
+
+
 
     function getColorAtPercent(percent) {
       let start = COLOR_STOPS[0];
@@ -355,24 +369,48 @@
       if (className === 'io') {
         value = formatBytes(value) + '/s';
       }
-      let size = small ? 120 : undefined;
+      let gaugeSize = small ? 120 : undefined;
+      let featherTop = small ? 40 : undefined;
+      let featherSize = undefined;
+      let gaugeValueMT = undefined;
+      let ioTransformLabelMarginTop = undefined;
+      let ioTransform = 'scale(0.8)';
+      if (store.windowWidth < 540) {
+        gaugeSize = small ? 60 : 80;
+        featherTop = small ? 20 : 30;
+        featherSize = small ? 20 : 24;
+        gaugeValueMT = small ? 45 : 60;
+        ioTransformLabelMarginTop = -10;
+        ioTransform = 'scale(0.5)';
+      }
+      let labelExtras = <>{valueMB ? `${valueMB} MB` : ''}
+        {cpuFreq ? `${Math.round(Math.min(...store.frequencies.cpu))}-${Math.round(Math.max(...store.frequencies.cpu))} MHz` : ''}
+        {gpuFreq ? `${store.frequencies.gpuCore} MHz` : ''}
+        {gpuPwr ? `${store.pwr.gpu} W` : ''}</>
       return (
-        <div class="gauge" style={{ width: size, height: size, }}>
+        <div class="gauge" style={{ width: gaugeSize, height: gaugeSize }}>
           <div class="gauge-body">
             <div>
               <div class="gauge-fill"></div>
               <div class="gauge-cover"></div>
               <div class="gauge-cover-2" style={{ "--a": `${pct}%` }}></div>
               <div class="gauge-cover-outer">
-                <div class="feather-wrapper" style={{ "color": `${iconColor}`, top: small ? 40 : undefined }}>
-                  <i data-feather={featherName} ></i>
+                <div class="feather-wrapper" style={{ "color": `${iconColor}`, top: featherTop }}>
+                  <i data-feather={featherName} style={{ width: featherSize, height: featherSize }}></i>
                 </div>
-                <div class="gauge-value" style={{ transform: className === 'io' ? 'scale(0.8)' : undefined }}>{value}{valueExtra}</div>
-                <div class="gauge-label">{label}{valueMB ? ` / ${valueMB} MB` : ''}
-                  {cpuFreq ? ` / ${Math.round(Math.min(...store.frequencies.cpu))}-${Math.round(Math.max(...store.frequencies.cpu))} MHz` : ''}
-                  {gpuFreq ? ` / ${store.frequencies.gpuCore} MHz` : ''}
-                  {gpuPwr ? ` / ${store.pwr.gpu} W` : ''}
+                <div class="gauge-value" style={{
+                  transform: className === 'io' ? ioTransform : undefined,
+                  marginTop: gaugeValueMT
+                }}>{value}{valueExtra}</div>
+                <div class="gauge-label" style={{ marginTop: className === 'io' ? ioTransformLabelMarginTop : undefined }}>
+                  {label}
+                  {store.windowWidth >= 540 ? ` / ` + labelExtras : ''}
                 </div>
+                {store.windowWidth < 540 &&
+                  <div class="gauge-label">
+                    {labelExtras}
+                  </div>
+                }
               </div>
             </div>
           </div>
@@ -388,10 +426,20 @@
       } else if (fullLoadItems === 2) {
         loadLevel = 1;
       }
+      let sectionMinHeight = undefined;
+      let infoFontSize = undefined;
+      let infoWidth = 220;
+      let infoMT = undefined;
+      if (store.windowWidth < 540) {
+        sectionMinHeight = 170;
+        infoFontSize = '70%';
+        infoWidth = 150;
+        infoMT = -20;
+      }
       return (
         <div className="container">
           <div style={{ paddingTop: 10 }}></div>
-          <div className="section">
+          <div className="section" style={{ minHeight: sectionMinHeight }}>
             <div className="section-title">Temperature</div>
             <div className="gauge-container">
               <Gauge
@@ -421,7 +469,7 @@
               />
             </div>
           </div>
-          <div className="section">
+          <div className="section" style={{ minHeight: sectionMinHeight }}>
             <div className="section-title">Usage</div>
             <div className="gauge-container">
               <Gauge value={store.usage.cpu} max={100} label="CPU" className="usage" featherName="cpu" small cpuFreq />
@@ -430,7 +478,7 @@
               <Gauge value={store.usage.vram} valueMB={store.usageMB.vram} max={100} label="VRAM" className="usage" featherName="monitor" small />
             </div>
           </div>
-          <div className="section" >
+          <div className="section" style={{ minHeight: sectionMinHeight }}>
             <div className="section-title">I/O</div>
             <div className="gauge-container">
               <Gauge
@@ -467,8 +515,8 @@
               />
             </div>
           </div>
-          <div style={{ display: 'flex' }} >
-            <div className="section" style={{ flexGrow: 1 }}  >
+          <div style={{ display: 'flex', marginTop: infoMT }} >
+            <div className="section" style={{ flexGrow: 1, minHeight: sectionMinHeight }}  >
               <div className="section-title">Fan Speed</div>
               <div className="gauge-container">
                 <Gauge
@@ -488,7 +536,7 @@
               </div>
 
             </div>
-            <div className="section" style={{ width: 220 }} >
+            <div className="section" style={{ width: infoWidth, minHeight: sectionMinHeight }} >
               <div className="section-title">Info</div>
               <div style={{
                 display: 'flex',
@@ -496,7 +544,7 @@
                 alignItems: 'end',
                 justifyContent: 'center',
                 width: '100%',
-                fontSize: '100%',
+                fontSize: infoFontSize,
                 zIndex: -2
               }}>
                 <div style={{ fontSize: '1.5em', fontWeight: 600, zIndex: -2, color: COLOR_STOPS[loadLevel].color }}>
@@ -552,6 +600,12 @@
         console.error('Error processing metrics:', error);
       }
     });
+
+
+    window.addEventListener('resize', () => {
+      store.windowWidth = window.innerWidth;
+    });
+
 
 
   </script>
