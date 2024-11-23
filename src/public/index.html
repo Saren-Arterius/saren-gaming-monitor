@@ -120,6 +120,7 @@
     }
 
     @media screen and (max-width: 540px) {
+
       /* Your CSS rules here */
       .container::before {
         backdrop-filter: blur(24px) brightness(4) saturate(2);
@@ -127,6 +128,7 @@
     }
 
     @media screen and (max-height: 420px) {
+
       /* Your CSS rules here */
       .container::before {
         backdrop-filter: blur(24px) brightness(4) saturate(2);
@@ -495,7 +497,7 @@
             minHeight: sectionMinHeight,
             width: isSmallPortrait ? 'calc(50% - 40px)' : undefined,
             marginRight: isSmallPortrait ? 80 : undefined,
-            marginTop: isSmallPortrait ? 20 : undefined
+            marginTop: isSmallPortrait ? 10 : undefined
           }}>
             <div className="section-title">I/O</div>
             <div className="gauge-container" style={{
@@ -535,7 +537,7 @@
               />
             </div>
           </div>
-          <div style={{ display: 'flex', marginTop: isSmallPortrait ? 20 : infoMT, width: isSmallPortrait ? 'calc(50% - 40px)' : undefined }} >
+          <div style={{ display: 'flex', marginTop: isSmallPortrait ? 10 : infoMT, width: isSmallPortrait ? 'calc(50% - 40px)' : undefined }} >
             <div className="section" style={{ flexGrow: 1, minHeight: sectionMinHeight }}  >
               <div className="section-title">Fan Speed</div>
               <div className="gauge-container">
