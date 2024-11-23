@@ -16,8 +16,8 @@ export const CONFIG = {
                 ssd2: { min: 30, max: 84 } // u2
             },
             io: {
-                diskRead: { max: 11820 * 1024 * 1024 }, // PCIE 3.0 + PCIE 4.0 NVME SSD
-                diskWrite: { max: 11820 * 1024 * 1024 }, 
+                diskRead: { max: 5000 * 1024 * 1024 }, // PCIE 3.0 + PCIE 4.0 NVME SSD
+                diskWrite: { max: 5000 * 1024 * 1024 }, 
                 networkRx: { max: 500 * 1024 * 1024 }, // 4x1000 Network
                 networkTx: { max: 250 * 1024 * 1024 }
             },
