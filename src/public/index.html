@@ -451,6 +451,9 @@
         infoWidth = 150;
         infoMT = -20;
       }
+      if (isSmallPortrait) {
+        sectionMinHeight = 165;
+      }
       return (
         <div className="container" style={{ display: isSmallPortrait ? 'flex' : undefined, flexWrap: isSmallPortrait ? 'wrap' : undefined, maxWidth: isSmallPortrait ? '100vw' : undefined }}>
           <div style={{ paddingTop: 10 }}></div>
@@ -496,7 +499,7 @@
           <div className="section" style={{
             minHeight: sectionMinHeight,
             width: isSmallPortrait ? 'calc(50% - 40px)' : undefined,
-            marginRight: isSmallPortrait ? 80 : undefined,
+            marginRight: isSmallPortrait ? 40 : undefined,
             marginTop: isSmallPortrait ? 10 : undefined
           }}>
             <div className="section-title">I/O</div>
@@ -537,7 +540,12 @@
               />
             </div>
           </div>
-          <div style={{ display: 'flex', marginTop: isSmallPortrait ? 10 : infoMT, width: isSmallPortrait ? 'calc(50% - 40px)' : undefined }} >
+          <div style={{
+            display: 'flex',
+            marginTop: isSmallPortrait ? 10 : infoMT,
+            width: isSmallPortrait ? 'calc(50% - 40px)' : undefined,
+            flexGrow: isSmallPortrait ? 1 : undefined
+          }} >
             <div className="section" style={{ flexGrow: 1, minHeight: sectionMinHeight }}  >
               <div className="section-title">Fan Speed</div>
               <div className="gauge-container">
@@ -558,7 +566,7 @@
               </div>
 
             </div>
-            <div className="section" style={{ display: 'flex', width: isSmallPortrait ? 180 : infoWidth, minHeight: sectionMinHeight }} >
+            <div className="section" style={{ display: 'flex', width: isSmallPortrait ? 150 : infoWidth, minHeight: sectionMinHeight }} >
               <div className="section-title">&nbsp;</div>
               <div style={{
                 display: 'flex',
