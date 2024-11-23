@@ -383,10 +383,10 @@
         ioTransformLabelMarginTop = -10;
         ioTransform = 'scale(0.5)';
       }
-      let labelExtras = <>{valueMB ? `${valueMB} MB` : ''}
-        {cpuFreq ? `${Math.round(Math.min(...store.frequencies.cpu))}-${Math.round(Math.max(...store.frequencies.cpu))} MHz` : ''}
-        {gpuFreq ? `${store.frequencies.gpuCore} MHz` : ''}
-        {gpuPwr ? `${store.pwr.gpu} W` : ''}</>
+      let labelExtras = (valueMB ? `${valueMB} MB` : '') +
+        (cpuFreq ? `${Math.round(Math.min(...store.frequencies.cpu))}-${Math.round(Math.max(...store.frequencies.cpu))} MHz` : '') +
+        (gpuFreq ? `${store.frequencies.gpuCore} MHz` : '') +
+        (gpuPwr ? `${store.pwr.gpu} W` : '');
       return (
         <div class="gauge" style={{ width: gaugeSize, height: gaugeSize }}>
           <div class="gauge-body">
@@ -404,7 +404,7 @@
                 }}>{value}{valueExtra}</div>
                 <div class="gauge-label" style={{ marginTop: className === 'io' ? ioTransformLabelMarginTop : undefined }}>
                   {label}
-                  {store.windowWidth >= 540 ? ` / ` + labelExtras : ''}
+                  {store.windowWidth >= 540 && labelExtras ? ' / ' + labelExtras : ''}
                 </div>
                 {store.windowWidth < 540 &&
                   <div class="gauge-label">
