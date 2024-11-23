@@ -158,7 +158,7 @@
     .feather-wrapper {
       z-index: -2;
       position: absolute;
-      top: 50px;
+      top: 52px;
       filter: contrast(2) brightness(1.5);
     }
   </style>
@@ -343,7 +343,7 @@
               <div class="gauge-cover"></div>
               <div class="gauge-cover-2" style={{ "--a": `${pct}%` }}></div>
               <div class="gauge-cover-outer">
-                <div class="feather-wrapper" style={{ "color": `${iconColor}`, top: small ? 50 : undefined }}>
+                <div class="feather-wrapper" style={{ "color": `${iconColor}`, top: small ? 40 : undefined }}>
                   <i data-feather={featherName} ></i>
                 </div>
                 <div class="gauge-value" style={{ transform: className === 'io' ? 'scale(0.8)' : undefined }}>{value}{valueExtra}</div>
