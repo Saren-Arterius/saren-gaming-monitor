@@ -317,13 +317,13 @@
 
 
 
-    const Gauge = ({ value, valueMB, max, label, className, featherName, small, cpuFreq, gpuFreq, gpuPwr }) => {
+    const Gauge = ({ value, valueMB, min = 0, max, label, className, featherName, small, cpuFreq, gpuFreq, gpuPwr }) => {
       useEffect(() => {
         // Runs only on mount (empty dependency array)
         feather.replace();
       }, []);
 
-      let pct = (value / max) * 75;
+      let pct = ((value - min) / (max - min)) * 75;
       if (pct > 75) pct = 75;
       let iconColor = getColorAtPercent(pct / 0.75);
       let valueExtra = {
@@ -366,9 +366,9 @@
           <div className="section">
             <div className="section-title">Temperature</div>
             <div className="gauge-container">
-              <Gauge value={store.temperatures.cpu} max={95} label="CPU" className="temperature" featherName="cpu" />
-              <Gauge value={store.temperatures.gpu} max={80} label="GPU" className="temperature" featherName="image" gpuPwr />
-              <Gauge value={store.temperatures.ssd} max={70} label="SSD" className="temperature" featherName="hard-drive" />
+              <Gauge value={store.temperatures.cpu} min={30} max={95} label="CPU" className="temperature" featherName="cpu" />
+              <Gauge value={store.temperatures.gpu} min={30} max={80} label="GPU" className="temperature" featherName="image" gpuPwr />
+              <Gauge value={store.temperatures.ssd} min={30} max={70} label="SSD" className="temperature" featherName="hard-drive" />
             </div>
           </div>
           <div className="section">
