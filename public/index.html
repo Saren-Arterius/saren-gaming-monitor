@@ -301,7 +301,7 @@
     function getGMT8Time(t) {
       const now = new Date(t);
       // Add GMT+8 offset
-      now.setHours(now.getHours() + 8);
+      now.setHours(now.getHours());
 
       // Format components
       const year = now.getFullYear();
