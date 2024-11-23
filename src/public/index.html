@@ -187,6 +187,7 @@
 
 
   <script type="text/babel">
+    const SMALL_WIDTH = 540;
 
     const COLOR_STOPS = [
       { color: '#70CAD1', position: 0 },
@@ -375,7 +376,7 @@
       let gaugeValueMT = undefined;
       let ioTransformLabelMarginTop = undefined;
       let ioTransform = 'scale(0.8)';
-      if (store.windowWidth < 540) {
+      if (store.windowWidth < SMALL_WIDTH) {
         gaugeSize = small ? 60 : 80;
         featherTop = small ? 20 : 30;
         featherSize = small ? 20 : 24;
@@ -404,9 +405,9 @@
                 }}>{value}{valueExtra}</div>
                 <div class="gauge-label" style={{ marginTop: className === 'io' ? ioTransformLabelMarginTop : undefined }}>
                   {label}
-                  {store.windowWidth >= 540 && labelExtras ? ' / ' + labelExtras : ''}
+                  {store.windowWidth >= SMALL_WIDTH && labelExtras ? ' / ' + labelExtras : ''}
                 </div>
-                {store.windowWidth < 540 &&
+                {store.windowWidth < SMALL_WIDTH &&
                   <div class="gauge-label">
                     {labelExtras}
                   </div>
@@ -430,7 +431,7 @@
       let infoFontSize = undefined;
       let infoWidth = 220;
       let infoMT = undefined;
-      if (store.windowWidth < 540) {
+      if (store.windowWidth < SMALL_WIDTH) {
         sectionMinHeight = 170;
         infoFontSize = '70%';
         infoWidth = 150;
