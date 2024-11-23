@@ -80,7 +80,11 @@ function transformSystemInfo(data) {
             motherboard: parseInt(data.sensors['nct6687-isa-0a20'].fan4.fan4_input)
         },
         frequencies: {
-            cpu: cpuMhzs
+            cpu: cpuMhzs,
+            gpuCore: parseInt(data.gpu[5]),
+        },
+        pwr: {
+            gpu: parseFloat(data.gpu[6]),
         },
         lastUpdate: now
     };
@@ -140,7 +144,7 @@ function transformSystemInfo(data) {
 
 
 setInterval(async () => {
-    let { stdout: gpu } = await execAsync('nvidia-smi --query-gpu=name,temperature.gpu,utilization.gpu,memory.used,memory.total --format=csv,noheader');
+    let { stdout: gpu } = await execAsync('nvidia-smi --query-gpu=name,temperature.gpu,utilization.gpu,memory.used,memory.total,clocks.current.graphics,power.draw --format=csv,noheader');
     let { stdout: sensors } = await execAsync('sensors -j');
     let stat = (await readFile('/proc/stat')).toString();
     let meminfo = (await readFile('/proc/meminfo')).toString();

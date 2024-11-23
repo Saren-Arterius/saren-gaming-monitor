@@ -210,7 +210,12 @@
       };
       frequencies = {
         cpu: [0],
-      }
+        gpuCore: 0,
+      };
+      pwr = {
+        gpu: 0,
+      };
+
       lastUpdate = 1732315685023;
 
       constructor() {
@@ -312,7 +317,7 @@
 
 
 
-    const Gauge = ({ value, valueMB, max, label, className, featherName, small, cpuFreq }) => {
+    const Gauge = ({ value, valueMB, max, label, className, featherName, small, cpuFreq, gpuFreq, gpuPwr }) => {
       useEffect(() => {
         // Runs only on mount (empty dependency array)
         feather.replace();
@@ -342,7 +347,11 @@
                   <i data-feather={featherName} ></i>
                 </div>
                 <div class="gauge-value" style={{ transform: className === 'io' ? 'scale(0.8)' : undefined }}>{value}{valueExtra}</div>
-                <div class="gauge-label">{label}{valueMB ? ` / ${valueMB} MB` : ''}{cpuFreq ? ` / ${Math.round(Math.min(...store.frequencies.cpu))}-${Math.round(Math.max(...store.frequencies.cpu))} MHz` : ''}</div>
+                <div class="gauge-label">{label}{valueMB ? ` / ${valueMB} MB` : ''}
+                  {cpuFreq ? ` / ${Math.round(Math.min(...store.frequencies.cpu))}-${Math.round(Math.max(...store.frequencies.cpu))} MHz` : ''}
+                  {gpuFreq ? ` / ${store.frequencies.gpuCore} MHz` : ''}
+                  {gpuPwr ? ` / ${store.pwr.gpu} W` : ''}
+                </div>
               </div>
             </div>
           </div>
@@ -358,7 +367,7 @@
             <div className="section-title">Temperature</div>
             <div className="gauge-container">
               <Gauge value={store.temperatures.cpu} max={95} label="CPU" className="temperature" featherName="cpu" />
-              <Gauge value={store.temperatures.gpu} max={80} label="GPU" className="temperature" featherName="image" />
+              <Gauge value={store.temperatures.gpu} max={80} label="GPU" className="temperature" featherName="image" gpuPwr />
               <Gauge value={store.temperatures.ssd} max={70} label="SSD" className="temperature" featherName="hard-drive" />
             </div>
           </div>
@@ -366,7 +375,7 @@
             <div className="section-title">Usage</div>
             <div className="gauge-container">
               <Gauge value={store.usage.cpu} max={100} label="CPU" className="usage" featherName="cpu" small cpuFreq />
-              <Gauge value={store.usage.gpu} max={100} label="GPU" className="usage" featherName="image" small />
+              <Gauge value={store.usage.gpu} max={100} label="GPU" className="usage" featherName="image" small gpuFreq />
               <Gauge value={store.usage.ram} valueMB={store.usageMB.ram} max={100} label="RAM" className="usage" featherName="server" small />
               <Gauge value={store.usage.vram} valueMB={store.usageMB.vram} max={100} label="VRAM" className="usage" featherName="monitor" small />
             </div>
@@ -429,10 +438,10 @@
     });
 
     socket.on('metrics', (data) => {
-    try {
+      try {
         // Parse the incoming data if it's a string
         const systemData = typeof data === 'string' ? JSON.parse(data) : data;
-        
+
         store.temperatures = systemData.temperatures;
         store.usage = systemData.usage;
         store.usageMB = systemData.usageMB;
@@ -440,11 +449,12 @@
         store.fanSpeed = systemData.fanSpeed;
         store.lastUpdate = systemData.lastUpdate;
         store.frequencies = systemData.frequencies;
-        
-    } catch (error) {
+        store.pwr = systemData.pwr;
+
+      } catch (error) {
         console.error('Error processing system info:', error);
-    }
-});
+      }
+    });
 
 
   </script>
