@@ -176,13 +176,46 @@
 
 
   <script type="text/babel">
-    const { useEffect } = React;
 
+    const COLOR_STOPS = [
+      { color: '#70CAD1', position: 0 },
+      { color: '#F7EE7F', position: 50 },
+      { color: '#A63D40', position: 100 }
+    ];
+
+    const { useEffect } = React;
     const { makeAutoObservable } = mobx;
     const { Observer, observer } = mobxReactLite;
     // const { Circle, Cpu, Activity } = require('react-feather');
 
     class Store {
+      // Configuration Constants
+      SYSTEM_INFO = {
+        hostname: 'PC',
+        cpu: 'AMD',
+        gpu: 'Nvidia',
+        case: 'PC Case',
+        os: 'Linux'
+      };
+
+      GAUGE_LIMITS = {
+        temperature: {
+          cpu: { min: 30, max: 95 },
+          gpu: { min: 30, max: 80 },
+          ssd: { min: 30, max: 70 }
+        },
+        io: {
+          diskRead: { max: 3.75 * 1024 * 1024 * 1024 },
+          diskWrite: { max: 3.75 * 1024 * 1024 * 1024 },
+          networkRx: { max: 1.25 * 1024 * 1024 * 1024 },
+          networkTx: { max: 1.25 * 1024 * 1024 * 1024 }
+        },
+        fanSpeed: {
+          cpu: { max: 2200 },
+          motherboard: { max: 12000 }
+        }
+      };
+
       temperatures = {
         cpu: 30,
         gpu: 50,
@@ -227,39 +260,27 @@
     const store = new Store();
 
     function getColorAtPercent(percent) {
-      // Define color stops
-      const colorStops = [
-        { color: '#70CAD1', position: 0 },
-        { color: '#F7EE7F', position: 50 },
-        { color: '#A63D40', position: 100 }
-      ];
+      let start = COLOR_STOPS[0];
+      let end = COLOR_STOPS[1];
 
-      // Find the two colors to interpolate between
-      let start = colorStops[0];
-      let end = colorStops[1];
-
-      for (let i = 1; i < colorStops.length; i++) {
-        if (percent <= colorStops[i].position) {
-          start = colorStops[i - 1];
-          end = colorStops[i];
+      for (let i = 1; i < COLOR_STOPS.length; i++) {
+        if (percent <= COLOR_STOPS[i].position) {
+          start = COLOR_STOPS[i - 1];
+          end = COLOR_STOPS[i];
           break;
         }
       }
 
-      // Calculate the percentage between the two colors
       const range = end.position - start.position;
       const adjustedPercent = (percent - start.position) / range;
 
-      // Convert hex to RGB
       const startRGB = hexToRGB(start.color);
       const endRGB = hexToRGB(end.color);
 
-      // Interpolate between the colors
       const r = Math.round(startRGB.r + (endRGB.r - startRGB.r) * adjustedPercent);
       const g = Math.round(startRGB.g + (endRGB.g - startRGB.g) * adjustedPercent);
       const b = Math.round(startRGB.b + (endRGB.b - startRGB.b) * adjustedPercent);
 
-      // Convert back to hex
       return rgbToHex(r, g, b);
     }
 
@@ -360,15 +381,44 @@
     };
 
     const Monitor = observer(() => {
+      let loadLevel = 0;
+      let fullLoadItems = Object.values(store.usage).filter(u => u >= 80).length;
+      if (fullLoadItems >= 3) {
+        loadLevel = 2;
+      } else if (fullLoadItems === 2) {
+        loadLevel = 1;
+      }
       return (
         <div className="container">
           <div style={{ paddingTop: 10 }}></div>
           <div className="section">
             <div className="section-title">Temperature</div>
             <div className="gauge-container">
-              <Gauge value={store.temperatures.cpu} min={30} max={95} label="CPU" className="temperature" featherName="cpu" />
-              <Gauge value={store.temperatures.gpu} min={30} max={80} label="GPU" className="temperature" featherName="image" gpuPwr />
-              <Gauge value={store.temperatures.ssd} min={30} max={70} label="SSD" className="temperature" featherName="hard-drive" />
+              <Gauge
+                value={store.temperatures.cpu}
+                min={store.GAUGE_LIMITS.temperature.cpu.min}
+                max={store.GAUGE_LIMITS.temperature.cpu.max}
+                label="CPU"
+                className="temperature"
+                featherName="cpu"
+              />
+              <Gauge
+                value={store.temperatures.gpu}
+                min={store.GAUGE_LIMITS.temperature.gpu.min}
+                max={store.GAUGE_LIMITS.temperature.gpu.max}
+                label="GPU"
+                className="temperature"
+                featherName="image"
+                gpuPwr
+              />
+              <Gauge
+                value={store.temperatures.ssd}
+                min={store.GAUGE_LIMITS.temperature.ssd.min}
+                max={store.GAUGE_LIMITS.temperature.ssd.max}
+                label="SSD"
+                className="temperature"
+                featherName="hard-drive"
+              />
             </div>
           </div>
           <div className="section">
@@ -383,19 +433,58 @@
           <div className="section" >
             <div className="section-title">I/O</div>
             <div className="gauge-container">
-              <Gauge value={store.io.diskRead} max={3.75 * 1024 * 1024 * 1024} label="Disk Read" className="io" featherName="hard-drive" small />
-              <Gauge value={store.io.diskWrite} max={3.75 * 1024 * 1024 * 1024} label="Disk Write" className="io" featherName="activity" small />
-              <Gauge value={store.io.networkRx} max={1.25 * 1024 * 1024 * 1024} label="Network RX" className="io" featherName="globe" small />
-              <Gauge value={store.io.networkTx} max={1.25 * 1024 * 1024 * 1024} label="Network TX" className="io" featherName="globe" small />
+              <Gauge
+                value={store.io.diskRead}
+                max={store.GAUGE_LIMITS.io.diskRead.max}
+                label="Disk Read"
+                className="io"
+                featherName="hard-drive"
+                small
+              />
+              <Gauge
+                value={store.io.diskWrite}
+                max={store.GAUGE_LIMITS.io.diskWrite.max}
+                label="Disk Write"
+                className="io"
+                featherName="activity"
+                small
+              />
+              <Gauge
+                value={store.io.networkRx}
+                max={store.GAUGE_LIMITS.io.networkRx.max}
+                label="Network RX"
+                className="io"
+                featherName="globe"
+                small
+              />
+              <Gauge
+                value={store.io.networkTx}
+                max={store.GAUGE_LIMITS.io.networkTx.max}
+                label="Network TX"
+                className="io"
+                featherName="globe"
+                small
+              />
             </div>
           </div>
           <div style={{ display: 'flex' }} >
             <div className="section" style={{ flexGrow: 1 }}  >
               <div className="section-title">Fan Speed</div>
               <div className="gauge-container">
-                <Gauge value={store.fanSpeed.cpu} max={2200} label="CPU" className="fan" featherName="cpu" />
-                <Gauge value={store.fanSpeed.motherboard} max={12000} label="Motherboard" className="fan" featherName="server" />
-
+                <Gauge
+                  value={store.fanSpeed.cpu}
+                  max={store.GAUGE_LIMITS.fanSpeed.cpu.max}
+                  label="CPU"
+                  className="fan"
+                  featherName="cpu"
+                />
+                <Gauge
+                  value={store.fanSpeed.motherboard}
+                  max={store.GAUGE_LIMITS.fanSpeed.motherboard.max}
+                  label="Motherboard"
+                  className="fan"
+                  featherName="server"
+                />
               </div>
 
             </div>
@@ -410,11 +499,13 @@
                 fontSize: '100%',
                 zIndex: -2
               }}>
-                <div style={{ fontSize: '1.5em', fontWeight: 600, zIndex: -2, color: '#70CAD1' }}>saren-gaming-pc</div>
-                <div style={{ opacity: 0.5 }}>AMD Ryzen 7 9800X3D</div>
-                <div style={{ opacity: 0.5 }}>NVIDIA GeForce RTX 4090</div>
-                <div style={{ opacity: 0.5 }}>Lian Li A4-H2O</div>
-                <div style={{ opacity: 0.5 }}>Arch Linux</div>
+                <div style={{ fontSize: '1.5em', fontWeight: 600, zIndex: -2, color: COLOR_STOPS[loadLevel].color }}>
+                  {store.SYSTEM_INFO.hostname}
+                </div>
+                <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.cpu}</div>
+                <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.gpu}</div>
+                <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.case}</div>
+                <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.os}</div>
                 <div style={{ fontWeight: 600 }}>{getGMT8Time(store.lastUpdate)}</div>
               </div>
             </div>
@@ -437,22 +528,28 @@
       console.log('Connected to server');
     });
 
+    socket.on('initInfo', (data) => {
+      try {
+        // Parse the incoming data if it's a string
+        const initInfo = typeof data === 'string' ? JSON.parse(data) : data;
+        for (let k of Object.keys(initInfo)) {
+          store[k] = initInfo[k];
+          console.log(k, initInfo[k]);
+        }
+      } catch (error) {
+        console.error('Error processing initInfo:', error);
+      }
+    });
+
     socket.on('metrics', (data) => {
       try {
         // Parse the incoming data if it's a string
-        const systemData = typeof data === 'string' ? JSON.parse(data) : data;
-
-        store.temperatures = systemData.temperatures;
-        store.usage = systemData.usage;
-        store.usageMB = systemData.usageMB;
-        store.io = systemData.io;
-        store.fanSpeed = systemData.fanSpeed;
-        store.lastUpdate = systemData.lastUpdate;
-        store.frequencies = systemData.frequencies;
-        store.pwr = systemData.pwr;
-
+        const metrics = typeof data === 'string' ? JSON.parse(data) : data;
+        for (let k of Object.keys(metrics)) {
+          store[k] = metrics[k];
+        }
       } catch (error) {
-        console.error('Error processing system info:', error);
+        console.error('Error processing metrics:', error);
       }
     });
 
