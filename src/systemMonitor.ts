@@ -11,34 +11,39 @@ export class SystemMonitor {
     private metrics: SystemMetrics | null = null;
 
     async collectData() {
-        const nvidiaCmdStr = `${CONFIG.commands.nvidia.command} ${CONFIG.commands.nvidia.params} ${CONFIG.commands.nvidia.format}`;
-        const [
-            { stdout: gpu },
-            { stdout: sensors },
-            stat,
-            meminfo,
-            diskstats,
-            netdev,
-            cpuinfo
-        ] = await Promise.all([
-            execAsync(nvidiaCmdStr),
-            execAsync(CONFIG.commands.sensors.command),
-            readFile(CONFIG.systemFiles.stat).then(b => b.toString()),
-            readFile(CONFIG.systemFiles.meminfo).then(b => b.toString()),
-            readFile(CONFIG.systemFiles.diskstats).then(b => b.toString()),
-            readFile(CONFIG.systemFiles.netdev).then(b => b.toString()),
-            readFile(CONFIG.systemFiles.cpuinfo).then(b => b.toString())
-        ]);
+        try {
+            const nvidiaCmdStr = `${CONFIG.commands.nvidia.command} ${CONFIG.commands.nvidia.params} ${CONFIG.commands.nvidia.format}`;
+            const [
+                { stdout: gpu },
+                { stdout: sensors },
+                stat,
+                meminfo,
+                diskstats,
+                netdev,
+                cpuinfo
+            ] = await Promise.all([
+                execAsync(nvidiaCmdStr),
+                execAsync(CONFIG.commands.sensors.command),
+                readFile(CONFIG.systemFiles.stat).then(b => b.toString()),
+                readFile(CONFIG.systemFiles.meminfo).then(b => b.toString()),
+                readFile(CONFIG.systemFiles.diskstats).then(b => b.toString()),
+                readFile(CONFIG.systemFiles.netdev).then(b => b.toString()),
+                readFile(CONFIG.systemFiles.cpuinfo).then(b => b.toString())
+            ]);
 
-        return {
-            gpu: gpu.split(',').map(str => str.trim()),
-            sensors: JSON.parse(sensors),
-            stat: stat.split('\n'),
-            meminfo: meminfo.split('\n'),
-            diskstats: diskstats.split('\n'),
-            netdev: netdev.split('\n'),
-            cpuinfo: cpuinfo.split('\n')
-        };
+            return {
+                gpu: gpu.split(',').map(str => str.trim()),
+                sensors: JSON.parse(sensors),
+                stat: stat.split('\n'),
+                meminfo: meminfo.split('\n'),
+                diskstats: diskstats.split('\n'),
+                netdev: netdev.split('\n'),
+                cpuinfo: cpuinfo.split('\n')
+            };
+        } catch (error) {
+            console.error('Error collecting system data:', error);
+            throw error;
+        }
     }
 
     transformSystemInfo(data) {
@@ -136,12 +141,17 @@ export class SystemMonitor {
     }
 
     async updateMetrics() {
-        const data = await this.collectData();
-        this.metrics = this.transformSystemInfo(data);
+        try {
+            const data = await this.collectData();
+            this.metrics = this.transformSystemInfo(data);
+        } catch (error) {
+            console.error('Error updating system metrics:', error);
+        }
         return this.metrics;
     }
 
     getMetrics() {
         return this.metrics;
     }
+    
 }
