@@ -18,7 +18,7 @@ export const CONFIG = {
             },
             io: {
                 diskRead: { max: 3.75 * 1024 * 1024 * 1024 }, // PCIE 3.0 NVME SSD
-                diskWrite: { max: 3.75 * 1024 * 1024 * 1024 }, 
+                diskWrite: { max: 3.75 * 1024 * 1024 * 1024 },
                 networkRx: { max: 1.25 * 1024 * 1024 * 1024 }, // 10Gbps Network
                 networkTx: { max: 1.25 * 1024 * 1024 * 1024 }
             },
@@ -27,6 +27,8 @@ export const CONFIG = {
                 motherboard: { max: 12000 }
             }
         },
+
+        MH_FAN: true
     },
     // lm_sensors json output, See `sensors -j`
     sensors: {

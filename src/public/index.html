@@ -5,15 +5,16 @@
   <meta charset="UTF-8" />
   <title>System Monitor</title>
   <link rel="stylesheet" href="https://unpkg.com/mvp.css" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <style>
     body {
-      background-color: rgb(2, 2, 5);
+      background-color: rgb(10, 20, 30);
       justify-content: center;
       align-items: center;
       min-height: 100vh;
       margin: 0;
       color: white;
+      overflow-x: hidden;
     }
 
     #root {
@@ -73,7 +74,7 @@
     .gauge-cover {
       width: 75%;
       height: 75%;
-      background: rgb(2, 2, 5);
+      background: rgb(10, 20, 30);
       border-radius: 50%;
       position: absolute;
       top: 50%;
@@ -95,7 +96,7 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      background: conic-gradient(transparent 0deg, transparent var(--a), rgb(2, 2, 5) calc(var(--a) + 0.2%));
+      background: conic-gradient(transparent 0deg, transparent var(--a), rgb(10, 20, 30) calc(var(--a) + 0.2%));
       z-index: -2;
       transition: --a 1s ease-out;
     }
@@ -111,7 +112,7 @@
 
     .container::before {
       content: '';
-      position: absolute;
+      position: fixed;
       backdrop-filter: blur(50px) brightness(4) saturate(2);
       opacity: 0.25;
       z-index: -1;
@@ -237,6 +238,8 @@
           motherboard: { max: 12000 }
         }
       };
+
+      MH_FAN = true;
 
       windowWidth = window.innerWidth;
       windowHeight = window.innerHeight;
@@ -586,7 +589,67 @@
               </div>
             </div>
           </div>
+          {!!store.MH_FAN && (
+            <div className="section" style={{ width: '100%', marginTop: isSmallPortrait ? 20 : undefined, minHeight: 0, paddingBottom: 10 }}>
+              <div className="section-title">Monster Hunter Wilds</div>
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                {(() => {
+                  const goalDate = new Date(1740672000 * 1000); // Convert seconds to milliseconds
+                  const startDate = new Date(goalDate - 120 * 24 * 60 * 60 * 1000); // 120 days before the goal
 
+                  const totalSeconds = (goalDate - startDate) / 1000;
+                  const elapsedSeconds = Math.max((store.lastUpdate - startDate) / 1000, 0); // Ensure non-negative value
+                  const progressPercentage = ((elapsedSeconds / totalSeconds) * 100).toFixed(3); // Calculate the percentage
+
+                  const remainingSeconds = (goalDate - store.lastUpdate) / 1000;
+                  const daysLeft = (remainingSeconds / (3600 * 24)).toFixed(3);
+                  const hoursLeft = (remainingSeconds / 3600).toFixed(3);
+                  const minutesLeft = (remainingSeconds / 60).toFixed(2);
+                  return (
+                    <div style={{ width: '100%' }}>
+                      <div style={{
+                        height: 10,
+                        position: 'relative',
+                        backgroundColor: '#e0e0e0',
+                        borderRadius: 5,
+                        overflow: 'hidden',
+                        zIndex: -2
+                      }}>
+                        {/* Gradient Background */}
+                        <div
+                          style={{
+                            height: 10,
+                            width: '100%', // Full width to cover the entire base bar
+                            background: `linear-gradient(to right, #70CAD1 0%, #F7EE7F 50%, #A63D40 100%)`,
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                          }}
+                        />
+
+                        {/* Masking Progress Bar */}
+                        <div
+                          style={{
+                            height: 10,
+                            width: `${100 - progressPercentage}%`, // Starts from the right and reduces as progress increases
+                            background: 'white', // White to mask the underlying gradient
+                            position: 'absolute',
+                            top: 0,
+                            right: 0, // Start from the right side
+                            borderTopRightRadius: 5, // Inverse border radius for the top right corner
+                            borderBottomRightRadius: 5, // Inverse border radius for the bottom right corner
+                          }}
+                        />
+                      </div>
+                      <div style={{ marginTop: 5, textAlign: 'left', width: '100%', opacity: 0.6, fontSize: '80%' }}>
+                        {progressPercentage}% - {daysLeft} days | {hoursLeft} hours | {minutesLeft} minutes left
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
         </div>
       )
     });
