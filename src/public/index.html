@@ -205,6 +205,9 @@
       { color: '#A63D40', position: 100 }
     ];
 
+    const STORAGE_TEXT_COLOR = [null, COLOR_STOPS[1].color, COLOR_STOPS[2].color];
+    const STORAGE_EXTRA_TEXT = [null, ' ⚠️', ' ⛔️'];
+
     const { useEffect } = React;
     const { makeAutoObservable } = mobx;
     const { Observer, observer } = mobxReactLite;
@@ -243,6 +246,7 @@
       windowWidth = window.innerWidth;
       windowHeight = window.innerHeight;
 
+      storageInfo = {}
       temperatures = {
         cpu: 30,
         gpu: 50,
@@ -367,7 +371,7 @@
       return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
     }
 
-    const Gauge = ({ value, valueMB, valueGB, min = 0, max, label, className, featherName, small, cpuFreq, gpuFreq, gpuPwr, clickFn }) => {
+    const Gauge = ({ value, valueMB, valueGB, min = 0, max, label, className, featherName, small, cpuFreq, gpuFreq, gpuPwr, clickFn, textColor, textExtra }) => {
       useEffect(() => {
         // Runs only on mount (empty dependency array)
         feather.replace();
@@ -419,8 +423,9 @@
                 </div>
                 <div className="gauge-value" style={{
                   transform: className === 'io' ? ioTransform : undefined,
-                  marginTop: gaugeValueMT
-                }}>{value}{valueExtra}</div>
+                  marginTop: gaugeValueMT,
+                  color: textColor || undefined
+                }}>{value}{valueExtra}{textExtra || ''}</div>
                 <div className="gauge-label" style={{ marginTop: className === 'io' ? ioTransformLabelMarginTop : undefined }}>
                   {label}
                   {!isSmallScreen && labelExtras ? ' / ' + labelExtras : ''}
@@ -457,6 +462,7 @@
         infoWidth = 150;
         infoMT = -20;
       }
+
       return (
         <div className="container" style={{ display: isSmallPortrait ? 'flex' : undefined, flexWrap: isSmallPortrait ? 'wrap' : undefined, maxWidth: isSmallPortrait ? '100vw' : undefined }}>
           <div style={{ paddingTop: 10 }}></div>
@@ -494,9 +500,13 @@
             <div className="gauge-container" style={{ marginTop: isSmallPortrait ? 25 : undefined }}>
               <Gauge value={store.usage.cpu} max={100} label="CPU" className="usage" featherName="cpu" small cpuFreq />
               <Gauge value={store.usage.ram} valueMB={store.usageMB.ram} max={100} label="RAM" className="usage" featherName="server" small />
-              <Gauge value={store.usage.ssd} valueGB={store.usageGB.ssd} max={100} label="System" className="usage" featherName="hard-drive" small clickFn={() => requestSSDInfo("system")}
+              <Gauge value={store.usage.ssd} valueGB={store.usageGB.ssd} max={100} label="System" className="usage" featherName="hard-drive" small clickFn={() => showStorageInfo("system")}
+                textColor={STORAGE_TEXT_COLOR[store.storageInfo.system?.info?.status || 0]}
+                textExtra={STORAGE_EXTRA_TEXT[store.storageInfo.system?.info?.status || 0]}
               />
-              <Gauge value={store.usage.ssd2} valueGB={store.usageGB.ssd2} max={100} label="Storage" className="usage" featherName="hard-drive" small clickFn={() => requestSSDInfo("storage")}
+              <Gauge value={store.usage.ssd2} valueGB={store.usageGB.ssd2} max={100} label="Storage" className="usage" featherName="hard-drive" small clickFn={() => showStorageInfo("storage")}
+                textColor={STORAGE_TEXT_COLOR[store.storageInfo.storage?.info?.status || 0]}
+                textExtra={STORAGE_EXTRA_TEXT[store.storageInfo.storage?.info?.status || 0]}
               />
 
             </div>
@@ -605,47 +615,74 @@
       </React.StrictMode>
     );
 
-    const socket = io();
+    function formatTimeDiff(timestamp) {
+      const now = Date.now();
+      const diff = Math.floor((now - timestamp) / 1000); // seconds
 
-    function requestSSDInfo(section) {
-      console.log('requestSSDInfo', section);
-      socket.emit('requestSSDInfo', section);
+      if (diff < 60) return `${diff} seconds ago`;
+      if (diff < 3600) return `${Math.floor(diff / 60)} minutes ago`;
+      if (diff < 86400) return `${Math.floor(diff / 3600)} hours ago`;
+      return `${Math.floor(diff / 86400)} days ago`;
     }
 
-    socket.on('ssdInfo', (data) => {
-      alert(data);
-    });
+    function formatHealthReport(section, data) {
+      const info = data.info;
+      const smart = info.metrics.smart;
+      const fs = info.metrics.filesystem;
+      const lastUpdate = formatTimeDiff(data.lastUpdate);
+
+      return `Storage Health Report for [${section}] (${data.paths.join(', ')})
+Status: ${info.statusText}
+Last updated: ${lastUpdate}
+
+Drive Health:
+• Spare blocks: ${smart.spare.formatted}
+• Wear level: ${smart.wear.formatted}
+• Media errors: ${smart.mediaErrors.formatted}
+• Age: ${smart.powerOnTime.formatted}
+• Total written: ${smart.dataWritten.formatted}
+• Total read: ${smart.dataRead.formatted}
+
+BTRFS Status:
+• Write errors: ${fs.writeErrors}
+• Read errors: ${fs.readErrors}
+• Flush errors: ${fs.flushErrors}
+• Corruption errors: ${fs.corruptionErrors}
+• Generation errors: ${fs.generationErrors}
+
+${info.issues.length > 0 ? '\nIssues Found:\n' + info.issues.map(issue => '• ' + issue).join('\n') : 'No issues found.'}`
+    }
+
+
+    function showStorageInfo(section) {
+      console.log(section, JSON.parse(JSON.stringify(store.storageInfo[section])))
+      alert(formatHealthReport(section, store.storageInfo[section]))
+    }
+
+    const socket = io();
+
+
+    let saveToMobxStore = (label) => (data) => {
+      try {
+        // Parse the incoming data if it's a string
+        const info = typeof data === 'string' ? JSON.parse(data) : data;
+        for (let k of Object.keys(info)) {
+          store[k] = info[k];
+          console.log(k, info[k]);
+        }
+      } catch (error) {
+        console.error(`Error processing ${label}:`, error);
+      }
+    };
+
+    socket.on('storageInfo', saveToMobxStore('storageInfo'));
+    socket.on('initInfo', saveToMobxStore('initInfo'));
+    socket.on('metrics', saveToMobxStore('metrics'));
 
     // Listen for connection
     socket.on('connect', () => {
       console.log('Connected to server');
     });
-
-    socket.on('initInfo', (data) => {
-      try {
-        // Parse the incoming data if it's a string
-        const initInfo = typeof data === 'string' ? JSON.parse(data) : data;
-        for (let k of Object.keys(initInfo)) {
-          store[k] = initInfo[k];
-          console.log(k, initInfo[k]);
-        }
-      } catch (error) {
-        console.error('Error processing initInfo:', error);
-      }
-    });
-
-    socket.on('metrics', (data) => {
-      try {
-        // Parse the incoming data if it's a string
-        const metrics = typeof data === 'string' ? JSON.parse(data) : data;
-        for (let k of Object.keys(metrics)) {
-          store[k] = metrics[k];
-        }
-      } catch (error) {
-        console.error('Error processing metrics:', error);
-      }
-    });
-
 
     window.addEventListener('resize', () => {
       store.windowWidth = window.innerWidth;

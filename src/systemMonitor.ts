@@ -6,40 +6,30 @@ import { LastStats, SystemMetrics } from './types';
 
 const execAsync = util.promisify(exec);
 
+const STORAGE_HEALTH_RESULTS_TEMPLATE = {
+    status: 0, // 0 = normal, 1 = warning, 2 = critical
+    issues: [],
+    metrics: {
+        smart: {},
+        filesystem: {}
+    }
+};
 export class SystemMonitor {
     private lastStats: LastStats | null = null;
     private metrics: SystemMetrics | null = null;
 
-    private ssdInfo = {
+    private storageInfo = {
         storage: {
             paths: ['/dev/nvme1', '/mnt/storage'],
-            lastRequest: 0,
-            info: '',
+            lastUpdate: 0,
+            info: STORAGE_HEALTH_RESULTS_TEMPLATE,
         },
         system: {
             paths: ['/dev/nvme0', '/'],
-            lastRequest: 0,
-            info: '',
+            lastUpdate: 0,
+            info: STORAGE_HEALTH_RESULTS_TEMPLATE,
         },
     };
-
-    async collectSSDInfo(section: 'storage' | 'system') {
-        let paths = this.ssdInfo[section]?.paths;
-        if (!paths) throw new Error('Section not found');
-        if (Date.now() - this.ssdInfo[section].lastRequest < 60000) return this.ssdInfo[section].info;
-        const [
-            { stdout: smart },
-            { stdout: btrfsStats },
-        ] = await Promise.all([
-            execAsync(`sudo smartctl ${paths[0]} -a | grep 'START OF SMART DATA SECTION' -A 50`),
-            execAsync(`sudo btrfs device stats ${paths[1]}`)
-        ])
-        let now = Date.now();
-        let info = (`[${section}] Last Update: ${new Date(now)}\n\n` + btrfsStats + '\n' + smart).split('\n').map(l => l.trim()).join('\n');
-        this.ssdInfo[section].lastRequest = now;
-        this.ssdInfo[section].info = info;
-        return info;
-    }
 
     async collectData() {
         const [
@@ -77,7 +67,7 @@ export class SystemMonitor {
     transformSystemInfo(data) {
         const now = Date.now();
 
-        console.log(data.ssdStats)
+        // console.log(data.ssdStats)
         let total = data.meminfo.find(line => line.startsWith('MemTotal:')).split(/\s+/)[1] / 1024;
         let avail = data.meminfo.find(line => line.startsWith('MemAvailable:')).split(/\s+/)[1] / 1024;
         let memUsed = total - avail;
@@ -187,5 +177,136 @@ export class SystemMonitor {
 
     getMetrics() {
         return this.metrics;
+    }
+
+
+    analyzeStorageHealth(smartData, btrfsData) {
+
+        let results = JSON.parse(JSON.stringify(STORAGE_HEALTH_RESULTS_TEMPLATE));
+        // Helper function to add issues
+        const addIssue = (message, level) => {
+            results.issues.push(message);
+            results.status = Math.max(results.status, level);
+        };
+
+        // === SMART Analysis ===
+        const health = smartData.nvme_smart_health_information_log;
+
+        // Critical Warning
+        if (health.critical_warning !== 0) {
+            addIssue(`Critical warning detected (code: ${health.critical_warning})`, 2);
+        }
+
+        // Available Spare
+        results.metrics.smart.spare = {
+            current: health.available_spare,
+            threshold: health.available_spare_threshold,
+            formatted: `${health.available_spare}% spare (threshold: ${health.available_spare_threshold}%)`
+        };
+        if (health.available_spare <= health.available_spare_threshold) {
+            addIssue('Available spare blocks below threshold', 2);
+        } else if (health.available_spare <= health.available_spare_threshold * 1.5) {
+            addIssue('Available spare blocks approaching threshold', 1);
+        }
+
+        // Wear Level
+        results.metrics.smart.wear = {
+            percentage: health.percentage_used,
+            formatted: `${health.percentage_used}% worn`
+        };
+        if (health.percentage_used >= 90) {
+            addIssue('Drive severely worn', 2);
+        } else if (health.percentage_used >= 80) {
+            addIssue('Drive significantly worn', 1);
+        }
+
+        // Media Errors
+        results.metrics.smart.mediaErrors = {
+            count: health.media_errors,
+            formatted: `${health.media_errors} media errors`
+        };
+        if (health.media_errors > 0) {
+            addIssue(`${health.media_errors} media errors detected`, 2);
+        }
+
+        // SMART Status
+        if (!smartData.smart_status.passed) {
+            addIssue('SMART overall status: FAILED', 2);
+        }
+
+        // Power-on time and read/write statistics
+        results.metrics.smart.powerOnTime = {
+            hours: smartData.power_on_time.hours,
+            formatted: `${Math.floor(smartData.power_on_time.hours / 24)} days, ${smartData.power_on_time.hours % 24} hours`
+        };
+
+        results.metrics.smart.dataWritten = {
+            units: health.data_units_written,
+            formatted: `${(health.data_units_written * 512000 / (1024 * 1024 * 1024 * 1024)).toFixed(2)} TB written`
+        };
+
+        results.metrics.smart.dataRead = {
+            units: health.data_units_read,
+            formatted: `${(health.data_units_read * 512000 / (1024 * 1024 * 1024 * 1024)).toFixed(2)} TB read`
+        };
+
+        // === BTRFS Analysis ===
+        const deviceStats = btrfsData["device-stats"][0];
+
+        results.metrics.filesystem = {
+            writeErrors: deviceStats.write_io_errs,
+            readErrors: deviceStats.read_io_errs,
+            flushErrors: deviceStats.flush_io_errs,
+            corruptionErrors: deviceStats.corruption_errs,
+            generationErrors: deviceStats.generation_errs
+        };
+
+        // Check for any BTRFS errors
+        if (deviceStats.write_io_errs > 0) {
+            addIssue(`${deviceStats.write_io_errs} BTRFS write errors detected`, 2);
+        }
+        if (deviceStats.read_io_errs > 0) {
+            addIssue(`${deviceStats.read_io_errs} BTRFS read errors detected`, 2);
+        }
+        if (deviceStats.flush_io_errs > 0) {
+            addIssue(`${deviceStats.flush_io_errs} BTRFS flush errors detected`, 2);
+        }
+        if (deviceStats.corruption_errs > 0) {
+            addIssue(`${deviceStats.corruption_errs} BTRFS corruption errors detected`, 2);
+        }
+        if (deviceStats.generation_errs > 0) {
+            addIssue(`${deviceStats.generation_errs} BTRFS generation errors detected`, 2);
+        }
+
+        // Set status description
+        results.statusText = ['Normal', 'Warning', 'Critical'][results.status];
+
+        return results;
+    }
+
+
+    async collectStorageInfo(section) {
+        let paths = this.storageInfo[section].paths;
+        const [
+            { stdout: smart },
+            { stdout: btrfsStats },
+        ] = await Promise.all([
+            execAsync(`sudo smartctl ${paths[0]} -aj`),
+            execAsync(`sudo btrfs --format=json device stats ${paths[1]}`)
+        ])
+        return this.analyzeStorageHealth(JSON.parse(smart), JSON.parse(btrfsStats));
+    }
+
+    async updateStorageInfo() {
+        for (let [section, storage] of Object.entries(this.storageInfo)) {
+            let info = await this.collectStorageInfo(section);
+            storage.info = info;
+            storage.lastUpdate = Date.now();
+        }
+        return this.storageInfo;
+    }
+
+    getStorageInfo() {
+        return this.storageInfo;
     }
 }
