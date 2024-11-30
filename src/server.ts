@@ -34,35 +34,32 @@ export class AppServer {
             console.log('Client connected:', socket.id);
             socket.emit('initInfo', CONFIG.initInfo);
             socket.emit('metrics', this.systemMonitor.getMetrics());
+            socket.emit('storageInfo', { storageInfo: this.systemMonitor.getStorageInfo() });
 
             socket.on('disconnect', () => {
                 console.log('Client disconnected:', socket.id);
-            });
-
-            let requestingSSDInfo = false;
-            socket.on('requestSSDInfo', async (section) => {
-                console.log('SSD info requested', socket.id, section);
-                if (requestingSSDInfo) return;
-                try {
-                    requestingSSDInfo = true;
-                    let info = await this.systemMonitor.collectSSDInfo(section);
-                    socket.emit('ssdInfo', info);
-                } catch (error) {
-                    console.error(error);
-                    socket.emit('ssdInfo', error.message);
-                }
-                requestingSSDInfo = false;
-
             });
         });
     }
 
     private setupMonitoring() {
+        (async () => {
+            const metrics = await this.systemMonitor.updateMetrics();
+            const storageInfo = await this.systemMonitor.updateStorageInfo();
+            console.log(metrics);
+            console.log(JSON.stringify(storageInfo, null, 2));
+        })()
+
         setInterval(async () => {
             const metrics = await this.systemMonitor.updateMetrics();
-            console.log(metrics);
+            // console.log(metrics);
             this.io.emit('metrics', metrics);
         }, 1000);
+        setInterval(async () => {
+            const storageInfo = await this.systemMonitor.updateStorageInfo();
+            console.log(storageInfo);
+            this.io.emit('storageInfo', { storageInfo });
+        }, 60000);
     }
 
     start() {
