@@ -488,6 +488,9 @@
                 label="SSD"
                 className="temperature"
                 featherName="hard-drive"
+                clickFn={() => showStorageInfo("system")}
+                textColor={STORAGE_TEXT_COLOR[store.storageInfo.system?.info?.status || 0]}
+                textExtra={STORAGE_EXTRA_TEXT[store.storageInfo.system?.info?.status || 0]}
               />
             </div>
           </div>

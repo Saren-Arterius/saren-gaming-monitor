@@ -19,11 +19,6 @@ export class SystemMonitor {
     private metrics: SystemMetrics | null = null;
 
     private storageInfo = {
-        storage: {
-            paths: ['/dev/nvme1', '/mnt/storage'],
-            lastUpdate: 0,
-            info: STORAGE_HEALTH_RESULTS_TEMPLATE,
-        },
         system: {
             paths: ['/dev/nvme0', '/'],
             lastUpdate: 0,
