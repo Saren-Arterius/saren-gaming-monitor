@@ -10,6 +10,37 @@ export class SystemMonitor {
     private lastStats: LastStats | null = null;
     private metrics: SystemMetrics | null = null;
 
+    private ssdInfo = {
+        storage: {
+            paths: ['/dev/nvme1', '/mnt/storage'],
+            lastRequest: 0,
+            info: '',
+        },
+        system: {
+            paths: ['/dev/nvme0', '/'],
+            lastRequest: 0,
+            info: '',
+        },
+    };
+
+    async collectSSDInfo(section: 'storage' | 'system') {
+        let paths = this.ssdInfo[section]?.paths;
+        if (!paths) throw new Error('Section not found');
+        if (Date.now() - this.ssdInfo[section].lastRequest < 60000) return this.ssdInfo[section].info;
+        const [
+            { stdout: smart },
+            { stdout: btrfsStats },
+        ] = await Promise.all([
+            execAsync(`sudo smartctl ${paths[0]} -a | grep 'START OF SMART DATA SECTION' -A 50`),
+            execAsync(`sudo btrfs device stats ${paths[1]}`)
+        ])
+        let now = Date.now();
+        let info = (`[${section}] Last Update: ${new Date(now)}\n\n` + btrfsStats + '\n' + smart).split('\n').map(l => l.trim()).join('\n');
+        this.ssdInfo[section].lastRequest = now;
+        this.ssdInfo[section].info = info;
+        return info;
+    }
+
     async collectData() {
         const [
             { stdout: sensors },
