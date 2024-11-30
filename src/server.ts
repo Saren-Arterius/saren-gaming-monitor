@@ -34,9 +34,25 @@ export class AppServer {
             console.log('Client connected:', socket.id);
             socket.emit('initInfo', CONFIG.initInfo);
             socket.emit('metrics', this.systemMonitor.getMetrics());
-            
+
             socket.on('disconnect', () => {
                 console.log('Client disconnected:', socket.id);
+            });
+
+            let requestingSSDInfo = false;
+            socket.on('requestSSDInfo', async (section) => {
+                console.log('SSD info requested', socket.id, section);
+                if (requestingSSDInfo) return;
+                try {
+                    requestingSSDInfo = true;
+                    let info = await this.systemMonitor.collectSSDInfo(section);
+                    socket.emit('ssdInfo', info);
+                } catch (error) {
+                    console.error(error);
+                    socket.emit('ssdInfo', error.message);
+                }
+                requestingSSDInfo = false;
+
             });
         });
     }

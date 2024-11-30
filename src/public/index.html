@@ -286,8 +286,6 @@
 
     const store = new Store();
 
-
-
     function getColorAtPercent(percent) {
       let start = COLOR_STOPS[0];
       let end = COLOR_STOPS[1];
@@ -367,7 +365,7 @@
 
 
 
-    const Gauge = ({ value, valueMB, min = 0, max, label, className, featherName, small, cpuFreq, gpuFreq, gpuPwr }) => {
+    const Gauge = ({ value, valueMB, valueGB, min = 0, max, label, className, featherName, small, cpuFreq, gpuFreq, gpuPwr, clickFn }) => {
       useEffect(() => {
         // Runs only on mount (empty dependency array)
         feather.replace();
@@ -404,26 +402,28 @@
         (gpuFreq ? `${store.frequencies.gpuCore} MHz` : '') +
         (gpuPwr ? `${store.pwr.gpu} W` : '');
       return (
-        <div class="gauge" style={{ width: gaugeSize, height: gaugeSize }}>
-          <div class="gauge-body">
+        <div className="gauge" style={{ width: gaugeSize, height: gaugeSize, cursor: clickFn ? 'pointer' : undefined }} onClick={() => {
+          clickFn && clickFn();
+        }}>
+          <div className="gauge-body">
             <div>
-              <div class="gauge-fill"></div>
-              <div class="gauge-cover"></div>
-              <div class="gauge-cover-2" style={{ "--a": `${pct}%` }}></div>
-              <div class="gauge-cover-outer">
-                <div class="feather-wrapper" style={{ "color": `${iconColor}`, top: featherTop }}>
+              <div className="gauge-fill"></div>
+              <div className="gauge-cover"></div>
+              <div className="gauge-cover-2" style={{ "--a": `${pct}%` }}></div>
+              <div className="gauge-cover-outer">
+                <div className="feather-wrapper" style={{ "color": `${iconColor}`, top: featherTop }}>
                   <i data-feather={featherName} style={{ width: featherSize, height: featherSize }}></i>
                 </div>
-                <div class="gauge-value" style={{
+                <div className="gauge-value" style={{
                   transform: className === 'io' ? ioTransform : undefined,
                   marginTop: gaugeValueMT
                 }}>{value}{valueExtra}</div>
-                <div class="gauge-label" style={{ marginTop: className === 'io' ? ioTransformLabelMarginTop : undefined }}>
+                <div className="gauge-label" style={{ marginTop: className === 'io' ? ioTransformLabelMarginTop : undefined }}>
                   {label}
                   {!isSmallScreen && labelExtras ? ' / ' + labelExtras : ''}
                 </div>
                 {isSmallScreen &&
-                  <div class="gauge-label">
+                  <div className="gauge-label">
                     {labelExtras}
                   </div>
                 }
@@ -661,6 +661,15 @@
     );
 
     const socket = io();
+
+    function requestSSDInfo(section) {
+      console.log('requestSSDInfo', section);
+      socket.emit('requestSSDInfo', section);
+    }
+
+    socket.on('ssdInfo', (data) => {
+      alert(data);
+    });
 
     // Listen for connection
     socket.on('connect', () => {
