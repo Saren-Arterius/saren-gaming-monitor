@@ -19,8 +19,8 @@ export const CONFIG = {
             io: {
                 diskRead: { max: 3.75 * 1024 * 1024 * 1024 }, // PCIE 3.0 NVME SSD
                 diskWrite: { max: 3.75 * 1024 * 1024 * 1024 },
-                networkRx: { max: 1.25 * 1024 * 1024 * 1024 }, // 10Gbps Network
-                networkTx: { max: 1.25 * 1024 * 1024 * 1024 }
+                networkRx: { max: 3 * 1024 * 1024 * 1024 }, // 40Gbps Network - overhead
+                networkTx: { max: 3 * 1024 * 1024 * 1024 }
             },
             fanSpeed: {
                 cpu: { max: 2200 },
@@ -55,7 +55,7 @@ export const CONFIG = {
         }
     },
     network: {
-        interface: 'enp5s0'
+        interface: 'enp5s0np0'
     },
     server: {
         port: 3000,
@@ -79,7 +79,9 @@ export const CONFIG = {
         meminfo: '/proc/meminfo',
         diskstats: '/proc/diskstats',
         netdev: '/proc/net/dev',
-        cpuinfo: '/proc/cpuinfo'
+        cpuinfo: '/proc/cpuinfo',
+        ib_rcv: '/sys/devices/pci0000:00/0000:00:02.1/0000:03:00.0/0000:04:00.0/0000:05:00.0/infiniband/mlx5_0/ports/1/counters/port_rcv_data',
+        ib_xmit: '/sys/devices/pci0000:00/0000:00:02.1/0000:03:00.0/0000:04:00.0/0000:05:00.0/infiniband/mlx5_0/ports/1/counters/port_xmit_data',
     },
 
 };

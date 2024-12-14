@@ -36,7 +36,9 @@ export class SystemMonitor {
                 meminfo,
                 diskstats,
                 netdev,
-                cpuinfo
+                cpuinfo,
+                ib_rcv,
+                ib_xmit
             ] = await Promise.all([
                 execAsync(nvidiaCmdStr),
                 execAsync(CONFIG.commands.sensors.command),
@@ -44,7 +46,9 @@ export class SystemMonitor {
                 readFile(CONFIG.systemFiles.meminfo).then(b => b.toString()),
                 readFile(CONFIG.systemFiles.diskstats).then(b => b.toString()),
                 readFile(CONFIG.systemFiles.netdev).then(b => b.toString()),
-                readFile(CONFIG.systemFiles.cpuinfo).then(b => b.toString())
+                readFile(CONFIG.systemFiles.cpuinfo).then(b => b.toString()),
+                readFile(CONFIG.systemFiles.ib_rcv).then(b => b.toString()),
+                readFile(CONFIG.systemFiles.ib_xmit).then(b => b.toString())
             ]);
 
             return {
@@ -54,7 +58,9 @@ export class SystemMonitor {
                 meminfo: meminfo.split('\n'),
                 diskstats: diskstats.split('\n'),
                 netdev: netdev.split('\n'),
-                cpuinfo: cpuinfo.split('\n')
+                cpuinfo: cpuinfo.split('\n'),
+                ib_rcv: ib_rcv.trim(),
+                ib_xmit: ib_xmit.trim()
             };
         } catch (error) {
             console.error('Error collecting system data:', error);
@@ -141,8 +147,11 @@ export class SystemMonitor {
                 const [, rxBytes, , , , , , , , txBytes] = networkStats.split(/\s+/);
                 const [, prevRxBytes, , , , , , , , prevTxBytes] = prevNetworkStats.split(/\s+/);
 
-                result.io.networkRx = Math.round((parseInt(rxBytes) - parseInt(prevRxBytes)) / timeDiff);
-                result.io.networkTx = Math.round((parseInt(txBytes) - parseInt(prevTxBytes)) / timeDiff);
+                let ibRx = Math.round(((parseInt(data.ib_rcv) * 4) - (parseInt(this.lastStats.ib_rcv) * 4)) / timeDiff);
+                let ibTx = Math.round(((parseInt(data.ib_xmit) * 4) - (parseInt(this.lastStats.ib_xmit) * 4)) / timeDiff);
+
+                result.io.networkRx = Math.round((parseInt(rxBytes) - parseInt(prevRxBytes)) / timeDiff) + ibRx;
+                result.io.networkTx = Math.round((parseInt(txBytes) - parseInt(prevTxBytes)) / timeDiff) + ibTx;
 
             }
         }
@@ -151,6 +160,8 @@ export class SystemMonitor {
             stat: [...data.stat],
             diskstats: [...data.diskstats],
             netdev: [...data.netdev],
+            ib_rcv: data.ib_rcv,
+            ib_xmit: data.ib_xmit,
             lastUpdate: now
         };
 

@@ -2,6 +2,8 @@ export interface LastStats {
     stat: string[];
     diskstats: string[];
     netdev: string[];
+    ib_rcv: string,
+    ib_xmit: string,
     lastUpdate: number;
 }
 
