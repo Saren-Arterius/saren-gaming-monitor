@@ -29,44 +29,41 @@ export class SystemMonitor {
     async collectData() {
         try {
             const nvidiaCmdStr = `${CONFIG.commands.nvidia.command} ${CONFIG.commands.nvidia.params} ${CONFIG.commands.nvidia.format}`;
-            const [
-                { stdout: gpu },
-                { stdout: sensors },
-                stat,
-                meminfo,
-                diskstats,
-                netdev,
-                cpuinfo,
-                ib_rcv,
-                ib_xmit
-            ] = await Promise.all([
+            const files = CONFIG.systemFiles;
+
+            const [{ stdout: gpu }, { stdout: sensors }, ...fileData] = await Promise.all([
                 execAsync(nvidiaCmdStr),
                 execAsync(CONFIG.commands.sensors.command),
-                readFile(CONFIG.systemFiles.stat).then(b => b.toString()),
-                readFile(CONFIG.systemFiles.meminfo).then(b => b.toString()),
-                readFile(CONFIG.systemFiles.diskstats).then(b => b.toString()),
-                readFile(CONFIG.systemFiles.netdev).then(b => b.toString()),
-                readFile(CONFIG.systemFiles.cpuinfo).then(b => b.toString()),
-                readFile(CONFIG.systemFiles.ib_rcv).then(b => b.toString()),
-                readFile(CONFIG.systemFiles.ib_xmit).then(b => b.toString())
+                ...Object.values(files).map(f => readFile(f).then(b => b.toString()))
             ]);
 
             return {
                 gpu: gpu.split(',').map(str => str.trim()),
                 sensors: JSON.parse(sensors),
-                stat: stat.split('\n'),
-                meminfo: meminfo.split('\n'),
-                diskstats: diskstats.split('\n'),
-                netdev: netdev.split('\n'),
-                cpuinfo: cpuinfo.split('\n'),
-                ib_rcv: ib_rcv.trim(),
-                ib_xmit: ib_xmit.trim()
+                stat: fileData[0].split('\n'),
+                meminfo: fileData[1].split('\n'),
+                diskstats: fileData[2].split('\n'),
+                netdev: fileData[3].split('\n'),
+                cpuinfo: fileData[4].split('\n'),
+                ib_rcv: fileData[5].trim(),
+                ib_xmit: fileData[6].trim(),
+                uptime: fileData[7].trim(),
+                loadavg: fileData[8].trim()
             };
         } catch (error) {
             console.error('Error collecting system data:', error);
             throw error;
         }
     }
+
+    formatUptime(seconds) {
+        const days = Math.floor(seconds / 86400);
+        const hours = Math.floor((seconds % 86400) / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+
+        return `${days}d ${hours}h ${minutes}m`;
+    }
+
 
     transformSystemInfo(data) {
         const now = Date.now();
@@ -78,6 +75,17 @@ export class SystemMonitor {
         let memUsage = memUsed / total;
 
         let cpuMhzs = data.cpuinfo.filter(l => l.startsWith('cpu MHz')).map(s => parseFloat(s.split(':')[1]));
+
+        const formattedUptime = this.formatUptime(parseFloat(data.uptime));
+        // Read load averages
+        const loadavg = data.loadavg
+            .split(' ')
+            .slice(0, 3)
+            .map(num => parseFloat(num).toFixed(2))
+            .join(' ');
+
+        // Combine the information in required format
+        let system = `${formattedUptime} | ${loadavg}`;
 
         const result = {
             temperatures: {
@@ -112,6 +120,7 @@ export class SystemMonitor {
             pwr: {
                 gpu: parseFloat(data.gpu[6]),
             },
+            system,
             lastUpdate: now
         };
 

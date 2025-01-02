@@ -580,7 +580,7 @@
                 flexDirection: 'column',
                 alignItems: 'end',
                 justifyContent: 'end',
-                paddingBottom: isSmallScreen ? 20 : 30,
+                paddingBottom: isSmallScreen ? 0 : 10,
                 width: '100%',
                 fontSize: infoFontSize,
                 zIndex: -2
@@ -592,6 +592,7 @@
                 <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.gpu}</div>
                 <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.case}</div>
                 <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.os}</div>
+                <div style={{ fontWeight: 500, opacity: 0.8 }}>{store.system}</div>
                 <div style={{ fontWeight: 600 }}>{getGMT8Time(store.lastUpdate)}</div>
               </div>
             </div>

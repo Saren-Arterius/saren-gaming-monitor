@@ -82,6 +82,8 @@ export const CONFIG = {
         cpuinfo: '/proc/cpuinfo',
         ib_rcv: '/sys/devices/pci0000:00/0000:00:02.1/0000:03:00.0/0000:04:00.0/0000:05:00.0/infiniband/mlx5_0/ports/1/counters/port_rcv_data',
         ib_xmit: '/sys/devices/pci0000:00/0000:00:02.1/0000:03:00.0/0000:04:00.0/0000:05:00.0/infiniband/mlx5_0/ports/1/counters/port_xmit_data',
+        uptime: '/proc/uptime',
+        loadavg: '/proc/loadavg'
     },
 
 };
