@@ -30,39 +30,43 @@ export class SystemMonitor {
             info: STORAGE_HEALTH_RESULTS_TEMPLATE,
         },
     };
-
+    
     async collectData() {
-        const [
-            { stdout: sensors },
-            stat,
-            meminfo,
-            diskstats,
-            netdev,
-            cpuinfo,
-            ssdStats,
-            ssd2Stats
-        ] = await Promise.all([
+        const files = CONFIG.systemFiles;
+        const dfCommands = [
+            'df -ml / | tail -n 1',
+            'df -ml /mnt/storage | tail -n 1'
+        ];
+    
+        const [{ stdout: sensors }, ...data] = await Promise.all([
             execAsync(CONFIG.commands.sensors.command),
-            readFile(CONFIG.systemFiles.stat).then(b => b.toString()),
-            readFile(CONFIG.systemFiles.meminfo).then(b => b.toString()),
-            readFile(CONFIG.systemFiles.diskstats).then(b => b.toString()),
-            readFile(CONFIG.systemFiles.netdev).then(b => b.toString()),
-            readFile(CONFIG.systemFiles.cpuinfo).then(b => b.toString()),
-            execAsync('df -ml / | tail -n 1'),
-            execAsync('df -ml /mnt/storage | tail -n 1'),
+            ...dfCommands.map(cmd => execAsync(cmd)),
+            ...Object.values(files).map(f => readFile(f).then(b => b.toString()))
         ]);
-
+    
         return {
             sensors: JSON.parse(sensors),
-            stat: stat.split('\n'),
-            meminfo: meminfo.split('\n'),
-            diskstats: diskstats.split('\n'),
-            netdev: netdev.split('\n').map(l => l.trim()),
-            cpuinfo: cpuinfo.split('\n'),
-            ssdStats: ssdStats.stdout.split(' '),
-            ssd2Stats: ssd2Stats.stdout.split(' ')
+            ssdStats: data[0].stdout.split(' '),
+            ssd2Stats: data[1].stdout.split(' '),
+            stat: data[2].split('\n'),
+            meminfo: data[3].split('\n'),
+            diskstats: data[4].split('\n'),
+            netdev: data[5].split('\n').map(l => l.trim()),
+            cpuinfo: data[6].split('\n'),
+            uptime: data[7].split('\n'),
+            loadavg: data[8].split('\n')
         };
     }
+    
+
+    formatUptime(seconds) {
+        const days = Math.floor(seconds / 86400);
+        const hours = Math.floor((seconds % 86400) / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+
+        return `${days}d ${hours}h ${minutes}m`;
+    }
+
 
     transformSystemInfo(data) {
         const now = Date.now();
@@ -74,6 +78,17 @@ export class SystemMonitor {
         let memUsage = memUsed / total;
 
         let cpuMhzs = data.cpuinfo.filter(l => l.startsWith('cpu MHz')).map(s => parseFloat(s.split(':')[1]));
+
+        const formattedUptime = this.formatUptime(parseFloat(data.uptime));
+        // Read load averages
+        const loadavg = data.loadavg
+            .split(' ')
+            .slice(0, 3)
+            .map(num => parseFloat(num).toFixed(2))
+            .join(' ');
+
+        // Combine the information in required format
+        let system = `${formattedUptime} | ${loadavg}`;
 
         const result = {
             temperatures: {
@@ -113,6 +128,7 @@ export class SystemMonitor {
             },
             pwr: {
             },
+            system,
             lastUpdate: now
         };
 
