@@ -30,7 +30,7 @@ export class SystemMonitor {
             info: STORAGE_HEALTH_RESULTS_TEMPLATE,
         },
     };
-    
+
     async collectData() {
         const files = CONFIG.systemFiles;
         const dfCommands = [
@@ -53,8 +53,8 @@ export class SystemMonitor {
             diskstats: data[4].split('\n'),
             netdev: data[5].split('\n').map(l => l.trim()),
             cpuinfo: data[6].split('\n'),
-            uptime: data[7].split('\n'),
-            loadavg: data[8].split('\n')
+            uptime: data[7].trim(),
+            loadavg: data[8].trim(),
         };
     }
     
