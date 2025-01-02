@@ -35,12 +35,12 @@ export const CONFIG = {
             tempInput: 'temp1_input'
         },
         ssd: {
-            temperature: 'nvme-pci-5800',
+            temperature: 'nvme-pci-5900',
             tempField: 'Composite',
             tempInput: 'temp1_input'
         },
         ssd2: {
-            temperature: 'nvme-pci-0100',
+            temperature: 'nvme-pci-0200',
             tempField: 'Composite',
             tempInput: 'temp1_input'
         },

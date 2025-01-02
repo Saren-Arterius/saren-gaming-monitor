@@ -20,12 +20,12 @@ export class SystemMonitor {
 
     private storageInfo = {
         storage: {
-            paths: ['/dev/nvme1', '/mnt/storage'],
+            paths: ['/dev/disk/by-id/nvme-SAMSUNG_MZQL215THBLA-00AAZ_S6GTNE0T500485', '/mnt/storage'],
             lastUpdate: 0,
             info: STORAGE_HEALTH_RESULTS_TEMPLATE,
         },
         system: {
-            paths: ['/dev/nvme0', '/'],
+            paths: ['/dev/disk/by-id/nvme-Micron_7300_MTFDHBG3T8TDF_21012D5EF921', '/'],
             lastUpdate: 0,
             info: STORAGE_HEALTH_RESULTS_TEMPLATE,
         },
@@ -242,12 +242,12 @@ export class SystemMonitor {
 
         results.metrics.smart.dataWritten = {
             units: health.data_units_written,
-            formatted: `${(health.data_units_written * 512000 / (1024 * 1024 * 1024 * 1024)).toFixed(2)} TB written`
+            formatted: `${(health.data_units_written * 512000 / (1000 ** 4)).toFixed(2)} TB written`
         };
 
         results.metrics.smart.dataRead = {
             units: health.data_units_read,
-            formatted: `${(health.data_units_read * 512000 / (1024 * 1024 * 1024 * 1024)).toFixed(2)} TB read`
+            formatted: `${(health.data_units_read * 512000 / (1000 ** 4)).toFixed(2)} TB read`
         };
 
         // === BTRFS Analysis ===
@@ -291,7 +291,7 @@ export class SystemMonitor {
             { stdout: smart },
             { stdout: btrfsStats },
         ] = await Promise.all([
-            execAsync(`sudo smartctl ${paths[0]} -aj`),
+            execAsync(`sudo smartctl ${paths[0]} -aj || true`),
             execAsync(`sudo btrfs --format=json device stats ${paths[1]}`)
         ])
         return this.analyzeStorageHealth(JSON.parse(smart), JSON.parse(btrfsStats));
