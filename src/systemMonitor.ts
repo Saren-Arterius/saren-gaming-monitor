@@ -2,7 +2,7 @@ import { readFile } from 'fs/promises';
 import { exec } from 'child_process';
 import util from 'node:util';
 import { CONFIG } from './config';
-import { LastStats, SystemMetrics } from './types';
+import { LastStats, NetworkMetrics, SystemMetrics } from './types';
 
 const execAsync = util.promisify(exec);
 
@@ -17,6 +17,7 @@ const STORAGE_HEALTH_RESULTS_TEMPLATE = {
 export class SystemMonitor {
     private lastStats: LastStats | null = null;
     private metrics: SystemMetrics | null = null;
+    private networkMetrics: NetworkMetrics | null = null;
 
     private storageInfo = {
         storage: {
@@ -31,19 +32,58 @@ export class SystemMonitor {
         },
     };
 
+    async updateMetrics() {
+        const data = await this.collectData();
+        this.metrics = this.transformSystemInfo(data);
+        return this.metrics;
+    }
+
+    getMetrics() {
+        return this.metrics;
+    }
+
+    async updateNetworkMetrics() {
+        try {
+            const response = await fetch(CONFIG.networkStatusAPI);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            this.networkMetrics = await response.json() as NetworkMetrics;
+        } catch (error) {
+            console.error('Failed to fetch network metrics:', error);
+            // this.networkMetrics = null;
+        }
+        return this.networkMetrics;
+    }
+
+    getNetworkMetrics() {
+        return this.networkMetrics;
+    }
+
+    getNetworkMetricsPartial() {
+        if (!this.networkMetrics) {
+            return null;
+        }
+        return {
+            internet_ports: this.networkMetrics.internet_ports,
+            ping_statistics: this.networkMetrics.ping_statistics,
+            last_updated: this.networkMetrics.last_updated
+        };
+    }
+
     async collectData() {
         const files = CONFIG.systemFiles;
         const dfCommands = [
             'df -ml / | tail -n 1',
             'df -ml /mnt/storage | tail -n 1'
         ];
-    
+
         const [{ stdout: sensors }, ...data] = await Promise.all([
             execAsync(CONFIG.commands.sensors.command),
             ...dfCommands.map(cmd => execAsync(cmd)),
             ...Object.values(files).map(f => readFile(f).then(b => b.toString()))
         ]);
-    
+
         return {
             sensors: JSON.parse(sensors),
             ssdStats: data[0].stdout.split(' '),
@@ -57,7 +97,7 @@ export class SystemMonitor {
             loadavg: data[8].trim(),
         };
     }
-    
+
 
     formatUptime(seconds) {
         const days = Math.floor(seconds / 86400);
@@ -185,15 +225,6 @@ export class SystemMonitor {
         return result;
     }
 
-    async updateMetrics() {
-        const data = await this.collectData();
-        this.metrics = this.transformSystemInfo(data);
-        return this.metrics;
-    }
-
-    getMetrics() {
-        return this.metrics;
-    }
 
 
     analyzeStorageHealth(smartData, btrfsData) {

@@ -80,7 +80,7 @@ export const CONFIG = {
         uptime: '/proc/uptime',
         loadavg: '/proc/loadavg'
     },
-
+    networkStatusAPI: 'http://100.64.0.5:8080/metrics',
 };
 
 console.log(CONFIG.initInfo.SYSTEM_INFO)

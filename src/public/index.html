@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <title>System Monitor</title>
-  <link rel="stylesheet" href="https://unpkg.com/mvp.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mvp.css" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     body {
@@ -185,11 +185,11 @@
 
 <body>
   <div id="root"></div>
-  <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/mobx@6.12.0/dist/mobx.umd.production.min.js"></script>
-  <script src="https://unpkg.com/mobx-react-lite@3.4.3/dist/mobxreactlite.umd.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mobx@6.12.0/dist/mobx.umd.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mobx-react-lite@3.4.3/dist/mobxreactlite.umd.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/feather-icons/4.29.2/feather.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.8.1/socket.io.min.js"></script>
 
@@ -452,7 +452,7 @@
       }
       let sectionMinHeight = undefined;
       let infoFontSize = undefined;
-      let infoWidth = 220;
+      let infoWidth = 240;
       let infoMT = undefined;
       let isSmallScreen = store.windowWidth < SMALL_WIDTH || store.windowHeight < SMALL_HEIGHT;
       let isSmallPortrait = isSmallScreen && store.windowWidth > store.windowHeight;
@@ -605,6 +605,102 @@
               </div>
             </div>
           </div>
+          {store.networkMetrics?.ping_statistics?.minute_history && (
+            <div style={{ width: '100%', marginTop: isSmallPortrait ? 8 : 16, }} onClick={() => {
+              const formatShort = (date) => {
+                return new Intl.DateTimeFormat('en-US', {
+                  month: 'long',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit',
+                  hour12: false
+                }).format(date).replace(/, (\d+):/, ', $1:');
+              };
+
+              let message = `Open Ports: ${store.networkMetrics.internet_ports.map(s => s.replace(/open/g, '').trim())?.join(', ') || 'None'}
+
+Ping latency:
+Current: ${store.networkMetrics.ping_statistics.latency.latest}ms
+1 Minute Avg: ${store.networkMetrics.ping_statistics.latency.last1m}ms
+5 Minutes Avg: ${store.networkMetrics.ping_statistics.latency.last5m}ms
+1 Hour Avg: ${store.networkMetrics.ping_statistics.latency.last1h}ms
+24 Hours Avg: ${store.networkMetrics.ping_statistics.latency.last24h}ms
+
+Packet loss:
+Current: ${store.networkMetrics.ping_statistics.packet_loss.latest_percent}%
+1 Minute: ${store.networkMetrics.ping_statistics.packet_loss.last1m_percent}%
+5 Minutes: ${store.networkMetrics.ping_statistics.packet_loss.last5m_percent}%
+1 Hour: ${store.networkMetrics.ping_statistics.packet_loss.last1h_percent}%
+24 Hours: ${store.networkMetrics.ping_statistics.packet_loss.last24h_percent}%
+
+Recent outages:
+${store.networkMetrics.ping_statistics.outages.reverse().map(o => {
+                const start = formatShort(new Date(o.start));
+                const end = formatShort(new Date(o.end));
+                const mins = Math.floor(o.duration_seconds / 60);
+                const secs = o.duration_seconds % 60;
+                return `${start} – ${end} (${mins}m${secs}s)`;
+              }).join('\n') || 'None in last 24 hours'}
+
+Last updated: ${formatTimeDiff(store.networkMetrics?.last_updated)}`;
+              alert(message);
+            }}>
+              <div style={{
+                display: 'flex',
+
+                flexGrow: isSmallPortrait ? 1 : undefined,
+                justifyContent: 'space-between',
+                position: 'relative',
+                zIndex: -2
+              }}>
+                {store.networkMetrics?.ping_statistics?.minute_history.map((h, i, arr) => {
+                  let pct = Math.min(100, Math.max((h.latency_ms ** 2) / 10, h.packet_loss_percent));
+                  return (
+                    <div style={{
+                      width: '100%',
+                      marginRight: '0.05em',
+                      height: 20,
+                      opacity: 1 - ((arr.length - i) * 0.015),
+                      '--latency-ms': h.latency_ms,
+                      '--pct': pct,
+                      backgroundColor: getColorAtPercent(pct),
+                    }}></div>
+                  )
+                })}
+              </div>
+              {store.networkMetrics?.ping_statistics?.latency && (
+                <div style={{
+                  zIndex: -2,
+                  marginTop: 4,
+                  justifyContent: 'space-between',
+                  position: 'relative',
+                  fontSize: '0.8em',
+                  display: 'flex'
+                }}>
+                  {store.networkMetrics?.internet_ports.length > 0 && <div
+                    style={{ fontWeight: 400, opacity: 0.5, marginLeft: -2, }}
+                  >{store.networkMetrics?.internet_ports.map(s => s.replace(/open/g, '').trim()).join(', ')}
+                  </div>}
+                  <div style={{
+                    fontWeight: 400,
+                    opacity: 0.8,
+                    marginRight: -2,
+                    color: getColorAtPercent(Math.min(100, Math.max(
+                      ((store.networkMetrics?.ping_statistics?.latency.last1m || store.networkMetrics.ping_statistics.latency.latest) ** 2) / 10,
+                      store.networkMetrics?.ping_statistics?.packet_loss.last1m_percent)
+                    ))
+                  }} >
+                    {store.networkMetrics?.last_updated - Date.now() > 6000 && <>{formatTimeDiff(store.networkMetrics?.last_updated)} •&nbsp;</>}
+                    {store.networkMetrics?.ping_statistics?.latency.last1m?.toFixed(1) || store.networkMetrics.ping_statistics.latency.latest?.toFixed(1)}ms •&nbsp;
+                    {store.networkMetrics?.ping_statistics?.packet_loss.last1m_percent?.toFixed(1)}% loss
+                  </div>
+
+                </div>
+              )}
+            </div>
+
+          )}
 
         </div>
       )
@@ -679,6 +775,8 @@ ${info.issues.length > 0 ? '\nIssues Found:\n' + info.issues.map(issue => '• '
     socket.on('storageInfo', saveToMobxStore('storageInfo'));
     socket.on('initInfo', saveToMobxStore('initInfo'));
     socket.on('metrics', saveToMobxStore('metrics'));
+    socket.on('networkMetrics', saveToMobxStore('networkMetrics'));
+
 
     // Listen for connection
     socket.on('connect', () => {

@@ -4,6 +4,7 @@ import { Server } from 'socket.io';
 import path from 'path';
 import { CONFIG } from './config';
 import { SystemMonitor } from './systemMonitor';
+import { NetworkMetrics } from './types';
 
 export class AppServer {
     private app = express();
@@ -35,6 +36,7 @@ export class AppServer {
             socket.emit('initInfo', CONFIG.initInfo);
             socket.emit('metrics', this.systemMonitor.getMetrics());
             socket.emit('storageInfo', { storageInfo: this.systemMonitor.getStorageInfo() });
+            socket.emit('networkMetrics', { networkMetrics: this.systemMonitor.getNetworkMetricsPartial() });
 
             socket.on('disconnect', () => {
                 console.log('Client disconnected:', socket.id);
@@ -45,16 +47,21 @@ export class AppServer {
     private setupMonitoring() {
         (async () => {
             const metrics = await this.systemMonitor.updateMetrics();
+            const networkMetrics = await this.systemMonitor.updateNetworkMetrics();
             const storageInfo = await this.systemMonitor.updateStorageInfo();
             console.log(metrics);
+            console.log(networkMetrics);
             console.log(JSON.stringify(storageInfo, null, 2));
         })()
 
         setInterval(async () => {
             const metrics = await this.systemMonitor.updateMetrics();
-            // console.log(metrics);
             this.io.emit('metrics', metrics);
         }, 1000);
+        setInterval(async () => {
+            await this.systemMonitor.updateNetworkMetrics();
+            this.io.emit('networkMetrics', { networkMetrics: this.systemMonitor.getNetworkMetricsPartial() });
+        }, 5000);
         setInterval(async () => {
             const storageInfo = await this.systemMonitor.updateStorageInfo();
             console.log(storageInfo);
