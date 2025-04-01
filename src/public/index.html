@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <title>System Monitor</title>
-  <link rel="stylesheet" href="https://unpkg.com/mvp.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mvp.css" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <style>
     body {
@@ -186,11 +186,11 @@
 
 <body>
   <div id="root"></div>
-  <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/mobx@6.12.0/dist/mobx.umd.production.min.js"></script>
-  <script src="https://unpkg.com/mobx-react-lite@3.4.3/dist/mobxreactlite.umd.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mobx@6.12.0/dist/mobx.umd.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mobx-react-lite@3.4.3/dist/mobxreactlite.umd.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/feather-icons/4.29.2/feather.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.8.1/socket.io.min.js"></script>
 
@@ -602,7 +602,7 @@
               <div className="section-title">Monster Hunter Wilds</div>
               <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 {(() => {
-                  const goalDate = new Date(1740672000 * 1000); // Convert seconds to milliseconds
+                  const goalDate = new Date(1740718800 * 1000); // Convert seconds to milliseconds
                   const startDate = new Date(goalDate - 120 * 24 * 60 * 60 * 1000); // 120 days before the goal
 
                   const totalSeconds = (goalDate - startDate) / 1000;

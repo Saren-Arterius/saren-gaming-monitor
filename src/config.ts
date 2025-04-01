@@ -28,7 +28,7 @@ export const CONFIG = {
             }
         },
 
-        MH_FAN: true
+        MH_FAN: false
     },
     // lm_sensors json output, See `sensors -j`
     sensors: {
