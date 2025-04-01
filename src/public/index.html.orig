@@ -68,7 +68,7 @@
       transform: rotate(-135deg);
       background: conic-gradient(#70CAD1 0%, #F7EE7F 37.5%, #A63D40 75%, transparent 0%);
       filter: brightness(1.25);
-      z-index: 2;
+      z-index: -2;
     }
 
     .gauge-cover {
@@ -80,7 +80,7 @@
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      z-index: 2;
+      z-index: -2;
     }
 
 
@@ -97,7 +97,7 @@
       align-items: center;
       justify-content: center;
       background: conic-gradient(transparent 0deg, transparent var(--a), rgb(10, 20, 30) calc(var(--a) + 0.2%));
-      z-index: 2;
+      z-index: -2;
       transition: --a 1s ease-out;
     }
 
@@ -115,10 +115,9 @@
       position: fixed;
       backdrop-filter: blur(32px) brightness(3) saturate(1);
       opacity: 0.25;
-      z-index: 3;
+      z-index: -1;
       inset: 0px;
       height: 100vh;
-      pointer-events: none;
     }
 
     @media screen and (max-width: 540px) {
@@ -144,7 +143,6 @@
       font-weight: 600;
       margin-top: 100px;
       white-space: nowrap;
-      z-index: 2;
     }
 
     .gauge-label {
@@ -153,7 +151,6 @@
       font-size: 0.8em;
       opacity: 0.5;
       white-space: nowrap;
-      z-index: 2;
     }
 
     .chart {
@@ -179,7 +176,7 @@
     }
 
     .feather-wrapper {
-      z-index: 2;
+      z-index: -2;
       position: absolute;
       top: 52px;
       filter: contrast(2) brightness(1.5);
@@ -247,8 +244,6 @@
 
       MH_FAN = true;
 
-      alertMessage = null;
-      alertExpire = 0;
       windowWidth = window.innerWidth;
       windowHeight = window.innerHeight;
 
@@ -286,11 +281,7 @@
         gpu: 0,
       };
 
-      connectedAt = 0;
-
-      lastUpdate = 0;
-
-      timeCheck = 0;
+      lastUpdate = 1732315685023;
 
       constructor() {
         makeAutoObservable(this);
@@ -468,289 +459,206 @@
       }
 
       return (
-        <>
-          <div className="container" style={{ display: isSmallPortrait ? 'flex' : undefined, flexWrap: isSmallPortrait ? 'wrap' : undefined, maxWidth: isSmallPortrait ? '100vw' : undefined }}>
-            <div style={{ paddingTop: 10 }}></div>
-            <div className="section" style={{ minHeight: sectionMinHeight, width: isSmallPortrait ? 'calc(50% - 40px)' : undefined, marginRight: isSmallPortrait ? 80 : undefined }}>
-              <div className="section-title">Temperature</div>
+        <div className="container" style={{ display: isSmallPortrait ? 'flex' : undefined, flexWrap: isSmallPortrait ? 'wrap' : undefined, maxWidth: isSmallPortrait ? '100vw' : undefined }}>
+          <div style={{ paddingTop: 10 }}></div>
+          <div className="section" style={{ minHeight: sectionMinHeight, width: isSmallPortrait ? 'calc(50% - 40px)' : undefined, marginRight: isSmallPortrait ? 80 : undefined }}>
+            <div className="section-title">Temperature</div>
+            <div className="gauge-container">
+              <Gauge
+                value={store.temperatures.cpu}
+                min={store.GAUGE_LIMITS.temperature.cpu.min}
+                max={store.GAUGE_LIMITS.temperature.cpu.max}
+                label="CPU"
+                className="temperature"
+                featherName="cpu"
+              />
+              <Gauge
+                value={store.temperatures.gpu}
+                min={store.GAUGE_LIMITS.temperature.gpu.min}
+                max={store.GAUGE_LIMITS.temperature.gpu.max}
+                label="GPU"
+                className="temperature"
+                featherName="image"
+                gpuPwr
+              />
+              <Gauge
+                value={store.temperatures.ssd}
+                min={store.GAUGE_LIMITS.temperature.ssd.min}
+                max={store.GAUGE_LIMITS.temperature.ssd.max}
+                label="SSD"
+                className="temperature"
+                featherName="hard-drive"
+                clickFn={() => showStorageInfo("system")}
+                textColor={STORAGE_TEXT_COLOR[store.storageInfo.system?.info?.status || 0]}
+                textExtra={STORAGE_EXTRA_TEXT[store.storageInfo.system?.info?.status || 0]}
+              />
+            </div>
+          </div>
+          <div className="section" style={{ minHeight: sectionMinHeight, width: isSmallPortrait ? 'calc(50% - 40px)' : undefined }}>
+            <div className="section-title">Usage</div>
+            <div className="gauge-container" style={{ marginTop: isSmallPortrait ? 25 : undefined }}>
+              <Gauge value={store.usage.cpu} max={100} label="CPU" className="usage" featherName="cpu" small cpuFreq />
+              <Gauge value={store.usage.gpu} max={100} label="GPU" className="usage" featherName="image" small gpuFreq />
+              <Gauge value={store.usage.ram} valueMB={store.usageMB.ram} max={100} label="RAM" className="usage" featherName="server" small />
+              <Gauge value={store.usage.vram} valueMB={store.usageMB.vram} max={100} label="VRAM" className="usage" featherName="monitor" small />
+            </div>
+          </div>
+          <div className="section" style={{
+            minHeight: sectionMinHeight,
+            width: isSmallPortrait ? 'calc(50% - 40px)' : undefined,
+            marginRight: isSmallPortrait ? 40 : undefined,
+            marginTop: isSmallPortrait ? 10 : undefined
+          }}>
+            <div className="section-title">I/O</div>
+            <div className="gauge-container" style={{
+              marginTop: isSmallPortrait ? 20 : undefined
+            }}>
+              <Gauge
+                value={store.io.diskRead}
+                max={store.GAUGE_LIMITS.io.diskRead.max}
+                label="Disk Read"
+                className="io"
+                featherName="hard-drive"
+                small
+              />
+              <Gauge
+                value={store.io.diskWrite}
+                max={store.GAUGE_LIMITS.io.diskWrite.max}
+                label="Disk Write"
+                className="io"
+                featherName="activity"
+                small
+              />
+              <Gauge
+                value={store.io.networkRx}
+                max={store.GAUGE_LIMITS.io.networkRx.max}
+                label="Network RX"
+                className="io"
+                featherName="globe"
+                small
+              />
+              <Gauge
+                value={store.io.networkTx}
+                max={store.GAUGE_LIMITS.io.networkTx.max}
+                label="Network TX"
+                className="io"
+                featherName="globe"
+                small
+              />
+            </div>
+          </div>
+          <div style={{
+            display: 'flex',
+            marginTop: isSmallPortrait ? 10 : infoMT,
+            width: isSmallPortrait ? 'calc(50% - 40px)' : undefined,
+            flexGrow: isSmallPortrait ? 1 : undefined
+          }} >
+            <div className="section" style={{ flexGrow: 1, minHeight: sectionMinHeight }}  >
+              <div className="section-title">Fan Speed</div>
               <div className="gauge-container">
                 <Gauge
-                  value={store.temperatures.cpu}
-                  min={store.GAUGE_LIMITS.temperature.cpu.min}
-                  max={store.GAUGE_LIMITS.temperature.cpu.max}
+                  value={store.fanSpeed.cpu}
+                  max={store.GAUGE_LIMITS.fanSpeed.cpu.max}
                   label="CPU"
-                  className="temperature"
+                  className="fan"
                   featherName="cpu"
                 />
                 <Gauge
-                  value={store.temperatures.gpu}
-                  min={store.GAUGE_LIMITS.temperature.gpu.min}
-                  max={store.GAUGE_LIMITS.temperature.gpu.max}
-                  label="GPU"
-                  className="temperature"
-                  featherName="image"
-                  gpuPwr
-                />
-                <Gauge
-                  value={store.temperatures.ssd}
-                  min={store.GAUGE_LIMITS.temperature.ssd.min}
-                  max={store.GAUGE_LIMITS.temperature.ssd.max}
-                  label="SSD"
-                  className="temperature"
-                  featherName="hard-drive"
-                  clickFn={() => showStorageInfo("system")}
-                  textColor={STORAGE_TEXT_COLOR[store.storageInfo.system?.info?.status || 0]}
-                  textExtra={STORAGE_EXTRA_TEXT[store.storageInfo.system?.info?.status || 0]}
+                  value={store.fanSpeed.motherboard}
+                  max={store.GAUGE_LIMITS.fanSpeed.motherboard.max}
+                  label="Motherboard"
+                  className="fan"
+                  featherName="server"
                 />
               </div>
-            </div>
-            <div className="section" style={{ minHeight: sectionMinHeight, width: isSmallPortrait ? 'calc(50% - 40px)' : undefined }}>
-              <div className="section-title">Usage</div>
-              <div className="gauge-container" style={{ marginTop: isSmallPortrait ? 25 : undefined }}>
-                <Gauge value={store.usage.cpu} max={100} label="CPU" className="usage" featherName="cpu" small cpuFreq />
-                <Gauge value={store.usage.gpu} max={100} label="GPU" className="usage" featherName="image" small gpuFreq />
-                <Gauge value={store.usage.ram} valueMB={store.usageMB.ram} max={100} label="RAM" className="usage" featherName="server" small />
-                <Gauge value={store.usage.vram} valueMB={store.usageMB.vram} max={100} label="VRAM" className="usage" featherName="monitor" small />
-              </div>
-            </div>
-            <div className="section" style={{
-              minHeight: sectionMinHeight,
-              width: isSmallPortrait ? 'calc(50% - 40px)' : undefined,
-              marginRight: isSmallPortrait ? 40 : undefined,
-              marginTop: isSmallPortrait ? 10 : undefined
-            }}>
-              <div className="section-title">I/O</div>
-              <div className="gauge-container" style={{
-                marginTop: isSmallPortrait ? 20 : undefined
-              }}>
-                <Gauge
-                  value={store.io.diskRead}
-                  max={store.GAUGE_LIMITS.io.diskRead.max}
-                  label="Disk Read"
-                  className="io"
-                  featherName="hard-drive"
-                  small
-                />
-                <Gauge
-                  value={store.io.diskWrite}
-                  max={store.GAUGE_LIMITS.io.diskWrite.max}
-                  label="Disk Write"
-                  className="io"
-                  featherName="activity"
-                  small
-                />
-                <Gauge
-                  value={store.io.networkRx}
-                  max={store.GAUGE_LIMITS.io.networkRx.max}
-                  label="Network RX"
-                  className="io"
-                  featherName="globe"
-                  small
-                />
-                <Gauge
-                  value={store.io.networkTx}
-                  max={store.GAUGE_LIMITS.io.networkTx.max}
-                  label="Network TX"
-                  className="io"
-                  featherName="globe"
-                  small
-                />
-              </div>
-            </div>
-            <div style={{
-              display: 'flex',
-              marginTop: isSmallPortrait ? 10 : infoMT,
-              width: isSmallPortrait ? 'calc(50% - 40px)' : undefined,
-              flexGrow: isSmallPortrait ? 1 : undefined
-            }} >
-              <div className="section" style={{ flexGrow: 1, minHeight: sectionMinHeight }}  >
-                <div className="section-title">Fan Speed</div>
-                <div className="gauge-container">
-                  <Gauge
-                    value={store.fanSpeed.cpu}
-                    max={store.GAUGE_LIMITS.fanSpeed.cpu.max}
-                    label="CPU"
-                    className="fan"
-                    featherName="cpu"
-                  />
-                  <Gauge
-                    value={store.fanSpeed.motherboard}
-                    max={store.GAUGE_LIMITS.fanSpeed.motherboard.max}
-                    label="Motherboard"
-                    className="fan"
-                    featherName="server"
-                  />
-                </div>
 
-              </div>
-              <div className="section" style={{ display: 'flex', width: isSmallPortrait ? 150 : infoWidth, minHeight: sectionMinHeight }} >
-                <div className="section-title">&nbsp;</div>
-                <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'end',
-                  justifyContent: 'end',
-                  paddingBottom: isSmallScreen ? 0 : 10,
-                  width: '100%',
-                  fontSize: infoFontSize,
-                  zIndex: -2
-                }}>
-                  <div style={{ fontSize: '1.5em', fontWeight: 600, zIndex: -2, color: COLOR_STOPS[loadLevel].color }}>
-                    {store.SYSTEM_INFO.hostname}
-                  </div>
-                  <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.cpu}</div>
-                  <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.gpu}</div>
-                  <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.case}</div>
-                  <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.os}</div>
-                  <div style={{ fontWeight: 500, opacity: 0.8 }}>{store.system}</div>
-                  <div style={{ fontWeight: 600 }}>{getGMT8Time(store.lastUpdate)}</div>
-                </div>
-              </div>
             </div>
-            {!!store.MH_FAN && (
-              <div className="section" style={{ width: '100%', marginTop: isSmallPortrait ? 20 : undefined, minHeight: 0, paddingBottom: 10 }}>
-                <div className="section-title">Monster Hunter Wilds</div>
-                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  {(() => {
-                    const goalDate = new Date(1740718800 * 1000); // Convert seconds to milliseconds
-                    const startDate = new Date(goalDate - 120 * 24 * 60 * 60 * 1000); // 120 days before the goal
-
-                    const totalSeconds = (goalDate - startDate) / 1000;
-                    const elapsedSeconds = Math.max((store.lastUpdate - startDate) / 1000, 0); // Ensure non-negative value
-                    const progressPercentage = ((elapsedSeconds / totalSeconds) * 100).toFixed(3); // Calculate the percentage
-
-                    const remainingSeconds = (goalDate - store.lastUpdate) / 1000;
-                    const daysLeft = (remainingSeconds / (3600 * 24)).toFixed(3);
-                    const hoursLeft = (remainingSeconds / 3600).toFixed(3);
-                    const minutesLeft = (remainingSeconds / 60).toFixed(2);
-                    return (
-                      <div style={{ width: '100%' }}>
-                        <div style={{
-                          height: 10,
-                          position: 'relative',
-                          backgroundColor: '#e0e0e0',
-                          borderRadius: 5,
-                          overflow: 'hidden',
-                          zIndex: -2
-                        }}>
-                          {/* Gradient Background */}
-                          <div
-                            style={{
-                              height: 10,
-                              width: '100%', // Full width to cover the entire base bar
-                              background: `linear-gradient(to right, #70CAD1 0%, #F7EE7F 50%, #A63D40 100%)`,
-                              position: 'absolute',
-                              top: 0,
-                              left: 0,
-                            }}
-                          />
-
-                          {/* Masking Progress Bar */}
-                          <div
-                            style={{
-                              height: 10,
-                              width: `${100 - progressPercentage}%`, // Starts from the right and reduces as progress increases
-                              background: 'white', // White to mask the underlying gradient
-                              position: 'absolute',
-                              top: 0,
-                              right: 0, // Start from the right side
-                              borderTopRightRadius: 5, // Inverse border radius for the top right corner
-                              borderBottomRightRadius: 5, // Inverse border radius for the bottom right corner
-                            }}
-                          />
-                        </div>
-                        <div style={{ marginTop: 5, textAlign: 'left', width: '100%', opacity: 0.6, fontSize: '80%' }}>
-                          {progressPercentage}% - {daysLeft} days | {hoursLeft} hours | {minutesLeft} minutes left
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-            )}
-          </div>
-          <div style={{
-            display: 'flex',
-            width: '100%',
-            height: '100%',
-            position: 'fixed',
-            zIndex: 6,
-            alignItems: 'center',
-            justifyContent: 'center',
-            pointerEvents: (!!store.alertMessage && (store.alertExpire > Math.max(store.timeCheck, Date.now()))) ? null : 'none',
-            backdropFilter: 'blur(4px) brightness(0.65)',
-            transition: 'all 0.3s ease-in-out',
-            opacity: (!!store.alertMessage && (store.alertExpire > Math.max(store.timeCheck, Date.now()))) ? 1 : 0,
-          }}
-            onClick={() => {
-              store.alertExpire = 0;
-            }}>
-            <div className="container" style={{
-              backgroundColor: '#232323a0',
-              paddingTop: 20,
-              paddingRight: 20,
-              paddingLeft: 20,
-              borderRadius: 20,
-            }} onClick={(e) => {
-              e.stopPropagation();
-            }}>
-              <div style={{ textAlign: 'center', fontSize: '1.5em' }}>{!!store.alertMessage && store.alertMessage[0]}</div>
+            <div className="section" style={{ display: 'flex', width: isSmallPortrait ? 150 : infoWidth, minHeight: sectionMinHeight }} >
+              <div className="section-title">&nbsp;</div>
               <div style={{
-                maxHeight: 'calc(100vh - 100px)',
-                overflow: 'scroll'
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'end',
+                justifyContent: 'end',
+                paddingBottom: isSmallScreen ? 0 : 10,
+                width: '100%',
+                fontSize: infoFontSize,
+                zIndex: -2
               }}>
-                <pre style={{
-                  margin: 0,
-                  padding: 0,
-                  whiteSpace: 'pre-wrap',
-                  fontSize: '0.75em',
-                  paddingBottom: 20
-                }}>
-                  {!!store.alertMessage && store.alertMessage[1]}
-                </pre>
+                <div style={{ fontSize: '1.5em', fontWeight: 600, zIndex: -2, color: COLOR_STOPS[loadLevel].color }}>
+                  {store.SYSTEM_INFO.hostname}
+                </div>
+                <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.cpu}</div>
+                <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.gpu}</div>
+                <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.case}</div>
+                <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.os}</div>
+                <div style={{ fontWeight: 500, opacity: 0.8 }}>{store.system}</div>
+                <div style={{ fontWeight: 600 }}>{getGMT8Time(store.lastUpdate)}</div>
               </div>
             </div>
           </div>
-          <div style={{
-            position: 'fixed',
-            width: '100%',
-            height: '100%',
-            backgroundColor: '#232323a0',
-            backdropFilter: 'blur(4px) brightness(0.65)',
-            display: 'flex',
-            opacity: (store.lastUpdate === 0 || (Math.max(store.timeCheck, Date.now()) - store.lastUpdate > 5000)) ? 1 : 0,
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 5,
-            marginLeft: -20,
-            marginRight: -20,
-            transition: 'all 0.5s ease-in-out',
-            pointerEvents: 'none'
-          }}>
-            {(() => {
-              if (store.lastUpdate === 0) return (
-                <>
-                  <div style={{ fontSize: '4em' }}>🌐</div>
-                  <div style={{ fontSize: '3em' }}>Connecting...</div>
-                </>
-              )
-              if (store.lastUpdate - store.connectedAt < 1000) return (
-                <>
-                  <div style={{ fontSize: '4em' }}>🌐</div>
-                  <div style={{ fontSize: '3em' }}>Connected</div>
-                </>
-              )
-              if (store.lastUpdate > 0) return (
-                <>
-                  <div style={{ fontSize: '4em' }}>⚠️</div>
-                  <div style={{ fontSize: '3em' }}>Connection Lost</div>
-                  <div style={{ fontSize: '1em' }}>{formatTimeDiff(store.lastUpdate)}</div>
-                </>
-              )
-            })()}
-          </div>
-        </>
+          {!!store.MH_FAN && (
+            <div className="section" style={{ width: '100%', marginTop: isSmallPortrait ? 20 : undefined, minHeight: 0, paddingBottom: 10 }}>
+              <div className="section-title">Monster Hunter Wilds</div>
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                {(() => {
+                  const goalDate = new Date(1740718800 * 1000); // Convert seconds to milliseconds
+                  const startDate = new Date(goalDate - 120 * 24 * 60 * 60 * 1000); // 120 days before the goal
+
+                  const totalSeconds = (goalDate - startDate) / 1000;
+                  const elapsedSeconds = Math.max((store.lastUpdate - startDate) / 1000, 0); // Ensure non-negative value
+                  const progressPercentage = ((elapsedSeconds / totalSeconds) * 100).toFixed(3); // Calculate the percentage
+
+                  const remainingSeconds = (goalDate - store.lastUpdate) / 1000;
+                  const daysLeft = (remainingSeconds / (3600 * 24)).toFixed(3);
+                  const hoursLeft = (remainingSeconds / 3600).toFixed(3);
+                  const minutesLeft = (remainingSeconds / 60).toFixed(2);
+                  return (
+                    <div style={{ width: '100%' }}>
+                      <div style={{
+                        height: 10,
+                        position: 'relative',
+                        backgroundColor: '#e0e0e0',
+                        borderRadius: 5,
+                        overflow: 'hidden',
+                        zIndex: -2
+                      }}>
+                        {/* Gradient Background */}
+                        <div
+                          style={{
+                            height: 10,
+                            width: '100%', // Full width to cover the entire base bar
+                            background: `linear-gradient(to right, #70CAD1 0%, #F7EE7F 50%, #A63D40 100%)`,
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                          }}
+                        />
+
+                        {/* Masking Progress Bar */}
+                        <div
+                          style={{
+                            height: 10,
+                            width: `${100 - progressPercentage}%`, // Starts from the right and reduces as progress increases
+                            background: 'white', // White to mask the underlying gradient
+                            position: 'absolute',
+                            top: 0,
+                            right: 0, // Start from the right side
+                            borderTopRightRadius: 5, // Inverse border radius for the top right corner
+                            borderBottomRightRadius: 5, // Inverse border radius for the bottom right corner
+                          }}
+                        />
+                      </div>
+                      <div style={{ marginTop: 5, textAlign: 'left', width: '100%', opacity: 0.6, fontSize: '80%' }}>
+                        {progressPercentage}% - {daysLeft} days | {hoursLeft} hours | {minutesLeft} minutes left
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
+        </div>
       )
     });
 
@@ -801,12 +709,7 @@ ${info.issues.length > 0 ? '\nIssues Found:\n' + info.issues.map(issue => '• '
 
     function showStorageInfo(section) {
       console.log(section, JSON.parse(JSON.stringify(store.storageInfo[section])))
-      panelAlert(formatHealthReport(section, store.storageInfo[section]), `Storage Info (${section})`)
-    }
-
-    function panelAlert(content, title) {
-      store.alertMessage = [title, content];
-      store.alertExpire = Date.now() + 10000;
+      alert(formatHealthReport(section, store.storageInfo[section]))
     }
 
     const socket = io();
@@ -819,9 +722,6 @@ ${info.issues.length > 0 ? '\nIssues Found:\n' + info.issues.map(issue => '• '
         for (let k of Object.keys(info)) {
           store[k] = info[k];
           console.log(k, info[k]);
-        }
-        if (store.connectedAt === 0) {
-          store.connectedAt = Date.now();
         }
       } catch (error) {
         console.error(`Error processing ${label}:`, error);
@@ -840,11 +740,8 @@ ${info.issues.length > 0 ? '\nIssues Found:\n' + info.issues.map(issue => '• '
     window.addEventListener('resize', () => {
       store.windowWidth = window.innerWidth;
       store.windowHeight = window.innerHeight;
-    });
 
-    setInterval(() => {
-      store.timeCheck = Date.now();
-    }, 1000);
+    });
 
 
 
