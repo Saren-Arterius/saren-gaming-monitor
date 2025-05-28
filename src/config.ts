@@ -4,7 +4,7 @@ export const CONFIG = {
     initInfo: {
         SYSTEM_INFO: {
             hostname: execSync("hostname").toString().trim(),
-            os: execSync('cat /etc/os-release | grep PRETTY_NAME | cut -d\\" -f2').toString().trim(),
+            os: execSync('uname -r').toString().trim(),
             cpu: 'Intel® Core™ i9-13900H',
             case: 'Minisforum MS-01',
         },
@@ -78,7 +78,8 @@ export const CONFIG = {
         // ib_rcv: '/sys/devices/pci0000:00/0000:00:02.1/0000:03:00.0/0000:04:00.0/0000:05:00.0/infiniband/mlx5_0/ports/1/counters/port_rcv_data',
         // ib_xmit: '/sys/devices/pci0000:00/0000:00:02.1/0000:03:00.0/0000:04:00.0/0000:05:00.0/infiniband/mlx5_0/ports/1/counters/port_xmit_data',
         uptime: '/proc/uptime',
-        loadavg: '/proc/loadavg'
+        loadavg: '/proc/loadavg',
+
     },
     networkStatusAPI: 'http://100.64.0.5:8080/metrics',
 };

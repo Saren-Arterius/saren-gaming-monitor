@@ -276,6 +276,9 @@
         diskWrite: 10000,
         networkRx: 1000054300,
         networkTx: 1000054300,
+        networkPacketsRx: 0,
+        networkPacketsTx: 0,
+        activeConn: 0
       };
       fanSpeed = {
         cpu: 1500,
@@ -344,22 +347,22 @@
       }).join('');
     }
 
-    function formatBytes(bytes, decimals = 1) {
-      if (bytes === 0) return '0 B';
+    function formatBytes(bytes, decimals = 1, name='B') {
+      if (bytes === 0) return `0 ${name}`;
 
       if (bytes >= 1024 * 1024) {
         // Convert to MB
         let mb = bytes / (1024 * 1024);
         if (mb >= 1000) {
-          return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+          return `${(bytes / (1024 * 1024)).toFixed(0)} M${name}`;
         }
-        return `${(bytes / (1024 * 1024)).toFixed(decimals)} MB`;
+        return `${(bytes / (1024 * 1024)).toFixed(decimals)} M${name}`;
       } else if (bytes >= 1024) {
         // Convert to KB
-        return `${(bytes / 1024).toFixed(decimals)} KB`;
+        return `${(bytes / 1024).toFixed(decimals)} k${name}`;
       } else {
         // Leave as Bytes
-        return `${bytes} B`;
+        return `${bytes} ${name}`;
       }
     }
 
@@ -380,7 +383,7 @@
       return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
     }
 
-    const Gauge = ({ value, valueMB, valueGB, min = 0, max, label, className, featherName, small, cpuFreq, gpuFreq, gpuPwr, clickFn, textColor, textExtra }) => {
+    const Gauge = ({ value, valueMB, valueGB, min = 0, max, label, className, featherName, small, cpuFreq, gpuFreq, gpuPwr, clickFn, textColor, textExtra, labelExtra }) => {
       useEffect(() => {
         // Runs only on mount (empty dependency array)
         feather.replace();
@@ -416,7 +419,8 @@
         (valueGB ? `${valueGB} GB` : '') +
         (cpuFreq ? `${Math.round(Math.min(...store.frequencies.cpu))}-${Math.round(Math.max(...store.frequencies.cpu))} MHz` : '') +
         (gpuFreq ? `${store.frequencies.gpuCore} MHz` : '') +
-        (gpuPwr ? `${store.pwr.gpu} W` : '');
+        (gpuPwr ? `${store.pwr.gpu} W` : '') + 
+        (labelExtra || '');
       return (
         <div className="gauge" style={{ width: gaugeSize, height: gaugeSize, cursor: clickFn ? 'pointer' : undefined }} onClick={() => {
           clickFn && clickFn();
@@ -551,6 +555,7 @@
                   value={store.io.networkRx}
                   max={store.GAUGE_LIMITS.io.networkRx.max}
                   label="Internet RX"
+                  labelExtra={formatBytes(store.io.networkPacketsRx, 1, 'PPS')}
                   className="io"
                   featherName="globe"
                   small
@@ -559,6 +564,7 @@
                   value={store.io.networkTx}
                   max={store.GAUGE_LIMITS.io.networkTx.max}
                   label="Internet TX"
+                  labelExtra={formatBytes(store.io.networkPacketsTx, 1, 'PPS')}
                   className="io"
                   featherName="globe"
                   small
@@ -628,7 +634,9 @@
                   }).format(date).replace(/, (\d+):/, ', $1:');
                 };
 
-                let message = `Open Ports: ${store.networkMetrics.internet_ports.map(s => s.replace(/open/g, '').trim())?.join(', ') || 'None'}
+                let message = `Active Connections: ${store.io.activeConn}
+
+Open Ports: ${store.networkMetrics.internet_ports.map(s => s.replace(/open/g, '').trim())?.join(', ') || 'None'}
 
 Ping latency:
 Current: ${store.networkMetrics.ping_statistics.latency.latest}ms
@@ -709,6 +717,7 @@ Last updated: ${formatTimeDiff(store.networkMetrics?.last_updated)}`;
                       ))
                     }} >
                       {Date.now() - store.networkMetrics?.last_updated > 7000 && <>{formatTimeDiff(store.networkMetrics?.last_updated)} •&nbsp;</>}
+                      {store.io.activeConn} conns •&nbsp;
                       {store.networkMetrics?.ping_statistics?.latency.last1m?.toFixed(1) || store.networkMetrics.ping_statistics.latency.latest?.toFixed(1)}ms •&nbsp;
                       {store.networkMetrics?.ping_statistics?.packet_loss.last1m_percent?.toFixed(1)}% loss
                     </div>

@@ -73,14 +73,15 @@ export class SystemMonitor {
 
     async collectData() {
         const files = CONFIG.systemFiles;
-        const dfCommands = [
+        const commands = [
             'df -ml / | tail -n 1',
-            'df -ml /mnt/storage | tail -n 1'
+            'df -ml /mnt/storage | tail -n 1',
+            "ss -tuna state established | grep -v '127.0.0.1' | grep -v '::1' | wc -l",
         ];
 
         const [{ stdout: sensors }, ...data] = await Promise.all([
             execAsync(CONFIG.commands.sensors.command),
-            ...dfCommands.map(cmd => execAsync(cmd)),
+            ...commands.map(cmd => execAsync(cmd)),
             ...Object.values(files).map(f => readFile(f).then(b => b.toString()))
         ]);
 
@@ -88,13 +89,14 @@ export class SystemMonitor {
             sensors: JSON.parse(sensors),
             ssdStats: data[0].stdout.split(' '),
             ssd2Stats: data[1].stdout.split(' '),
-            stat: data[2].split('\n'),
-            meminfo: data[3].split('\n'),
-            diskstats: data[4].split('\n'),
-            netdev: data[5].split('\n').map(l => l.trim()),
-            cpuinfo: data[6].split('\n'),
-            uptime: data[7].trim(),
-            loadavg: data[8].trim(),
+            activeConn: data[2].stdout.trim(),
+            stat: data[3].split('\n'),
+            meminfo: data[4].split('\n'),
+            diskstats: data[5].split('\n'),
+            netdev: data[6].split('\n').map(l => l.trim()),
+            cpuinfo: data[7].split('\n'),
+            uptime: data[8].trim(),
+            loadavg: data[9].trim()
         };
     }
 
@@ -121,6 +123,7 @@ export class SystemMonitor {
 
         const formattedUptime = this.formatUptime(parseFloat(data.uptime));
         // Read load averages
+        // console.log(data.loadavg);
         const loadavg = data.loadavg
             .split(' ')
             .slice(0, 3)
@@ -157,7 +160,10 @@ export class SystemMonitor {
                 diskRead: 0,
                 diskWrite: 0,
                 networkRx: 0,
-                networkTx: 0
+                networkTx: 0,
+                networkPacketsRx: 0,
+                networkPacketsTx: 0,
+                activeConn: parseInt(data.activeConn)
             },
             fanSpeed: {
                 cpu: parseInt(data.sensors[CONFIG.sensors.fans.controller][CONFIG.sensors.fans.cpu.id][CONFIG.sensors.fans.cpu.input]),
@@ -206,12 +212,14 @@ export class SystemMonitor {
             const prevNetworkStats = this.lastStats.netdev.find(line => line.startsWith(`${CONFIG.network.interface}:`));
 
             if (networkStats && prevNetworkStats) {
-                const [, rxBytes, , , , , , , , txBytes] = networkStats.split(/\s+/);
-                const [, prevRxBytes, , , , , , , , prevTxBytes] = prevNetworkStats.split(/\s+/);
+                const [, rxBytes, rxPackets, , , , , , , txBytes, txPackets] = networkStats.split(/\s+/);
+                const [, prevRxBytes, prevRxPackets, , , , , , , prevTxBytes, prevTxPackets] = prevNetworkStats.split(/\s+/);
 
                 result.io.networkRx = Math.round((parseInt(rxBytes) - parseInt(prevRxBytes)) / timeDiff);
                 result.io.networkTx = Math.round((parseInt(txBytes) - parseInt(prevTxBytes)) / timeDiff);
-
+                
+                result.io.networkPacketsRx = Math.round((parseInt(rxPackets) - parseInt(prevRxPackets)) / timeDiff);
+                result.io.networkPacketsTx = Math.round((parseInt(txPackets) - parseInt(prevTxPackets)) / timeDiff);
             }
         }
 
