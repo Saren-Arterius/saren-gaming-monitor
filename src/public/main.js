@@ -418,7 +418,7 @@ const Monitor = observer(() => {
   return (
     <>
       <div className="container" style={{ display: isSmallPortrait ? 'flex' : undefined, flexWrap: isSmallPortrait ? 'wrap' : undefined, maxWidth: isSmallPortrait ? '100vw' : undefined }}>
-        <div style={{ paddingTop: 10 }}></div>
+        <div style={{ paddingTop: 30 }}></div>
         <div className="section" style={{ minHeight: sectionMinHeight, width: isSmallPortrait ? 'calc(50% - 40px)' : undefined, marginRight: isSmallPortrait ? 80 : undefined }}>
           <div className="section-title">Temperature</div>
           <div className="gauge-container">
@@ -985,6 +985,7 @@ function setVAState(newState, ...args) {
 
 // --- Configuration Fetching ---
 function getConfigValue(paramName, storageKey) {
+    // return null;
     const urlParams = new URLSearchParams(window.location.search);
     const valueFromUrl = urlParams.get(paramName);
     if (valueFromUrl) {

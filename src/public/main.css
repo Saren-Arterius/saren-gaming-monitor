@@ -108,7 +108,7 @@ body {
     opacity: 0.25;
     z-index: 3;
     inset: 0px;
-    height: 100vh;
+    height: 100%;
     pointer-events: none;
 }
 
