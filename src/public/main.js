@@ -5,7 +5,7 @@ const POWERSAVE_MS = 30000;
 const RELAX_BUFFER_MS = 995;
 const WAKE_WORD_SPEECH_TIMEOUT = 7000;
 const HA_URL = 'https://ha-direct.wtako.net';
-
+const EXIT_MAGIC = 'XXEXITXX';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -1487,6 +1487,10 @@ function handlePipelineEvent(event) {
                 console.log(ttsText);
                 return;
             }
+            if (ttsText.includes(EXIT_MAGIC)) {
+                setVAState(STATE.IDLE); // Go back to idle
+                return;
+            }
             lastTTSAnimation(ttsText);
             break;
         case 'tts-end':
@@ -1496,9 +1500,9 @@ function handlePipelineEvent(event) {
                 if (store.vaState === STATE.SENDING_AUDIO || store.vaState === STATE.WAKE_WORD_TRIGGERED) { // Expecting TTS from these states
                     setVAState(STATE.PLAYING_TTS, ttsUrl);
                 } else {
-                    console.warn(`TTS-END event received but not in SENDING_AUDIO/WAKE_WORD_TRIGGERED. State: ${getStateName(store.vaState)}. Playing TTS anyway.`);
-                    new Audio(ttsUrl).play().catch(e => console.error('Error playing TTS audio (fallback):', e));
-                    if (store.vaState !== STATE.IDLE && store.vaState !== STATE.PLAYING_TTS) { setVAState(STATE.IDLE); }
+                    // console.warn(`TTS-END event received but not in SENDING_AUDIO/WAKE_WORD_TRIGGERED. State: ${getStateName(store.vaState)}. Playing TTS anyway.`);
+                    // new Audio(ttsUrl).play().catch(e => console.error('Error playing TTS audio (fallback):', e));
+                    // if (store.vaState !== STATE.IDLE && store.vaState !== STATE.PLAYING_TTS) { setVAState(STATE.IDLE); }
                 }
             } else { // No TTS output, but tts stage / intent handling is done. If no run-end follows, this might be the end.
                 console.log("TTS-END event with no TTS output URL. If no further events, pipeline might be considered ended.");
