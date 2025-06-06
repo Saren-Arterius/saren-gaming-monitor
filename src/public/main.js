@@ -921,10 +921,14 @@ function setVAState(newState, ...args) {
                 myvad.pause();
             }
 
+            if (oldState >= STATE.WAKE_WORD_TRIGGERED) {
+                new Audio('/cancel.mp3').play().catch(e => console.error('Error playing cancel.mp3:', e));
+            }
+
             if (bumblebee) {
-                // Assuming bumblebee.start() is idempotent or use bumblebee.isListening() if available
                 bumblebee.start();
             }
+
             break;
 
         case STATE.WAKE_WORD_TRIGGERED:
@@ -948,6 +952,8 @@ function setVAState(newState, ...args) {
                 } else {
                     console.log("STATE.WAKE_WORD_TRIGGERED: VAD already listening.");
                 }
+
+                new Audio('/activate.mp3').play().catch(e => console.error('Error playing activate.mp3:', e));
 
                 wakeWordTimeoutId = setTimeout(() => {
                     if (store.vaState === STATE.WAKE_WORD_TRIGGERED && !pipelineActive) { // No speech started
@@ -997,6 +1003,8 @@ function setVAState(newState, ...args) {
                 setVAState(STATE.IDLE);
                 return;
             }
+            new Audio('/analyzing.mp3').play().catch(e => console.error('Error playing analyzing.mp3:', e));
+
             console.log("STATE.SENDING_AUDIO: Waiting for Home Assistant response.");
             // VAD should have been paused by onSpeechEnd
             break;
