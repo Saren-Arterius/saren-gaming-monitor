@@ -418,7 +418,7 @@ const Monitor = observer(() => {
   return (
     <>
       <div className="container" style={{ display: isSmallPortrait ? 'flex' : undefined, flexWrap: isSmallPortrait ? 'wrap' : undefined, maxWidth: isSmallPortrait ? '100vw' : undefined }}>
-        <div style={{ paddingTop: 30 }}></div>
+        <div style={{ paddingTop: location.hostname.includes('direct2') ? 30 : 10 }}></div>
         <div className="section" style={{ minHeight: sectionMinHeight, width: isSmallPortrait ? 'calc(50% - 40px)' : undefined, marginRight: isSmallPortrait ? 80 : undefined }}>
           <div className="section-title">Temperature</div>
           <div className="gauge-container">
