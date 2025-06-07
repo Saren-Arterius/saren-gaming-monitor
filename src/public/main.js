@@ -4,6 +4,8 @@ const POWERSAVE_MS = 30000;
 const RELAX_BUFFER_MS = 995;
 const WAKE_WORD_SPEECH_TIMEOUT = 7000;
 const HA_URL = location.hostname.includes('direct2') ? 'https://ha-direct2.wtako.net' : 'https://ha-direct.wtako.net';
+const ASSETS_HOST = location.hostname.includes('direct2') ? 'https://monitor-direct2.wtako.net' : 'https://monitor-direct.wtako.net';
+
 const EXIT_MAGIC = 'XXEXITXX';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -354,7 +356,7 @@ const Monitor = observer(() => {
             return (
                 <>
                     <dotlottie-player
-                        src="/vendor/ai.lottie"
+                        src={ASSETS_HOST + "/vendor/ai.lottie"}
                         background="transparent"
                         speed={0.5}
                         style={{
@@ -859,7 +861,7 @@ function setVAState(newState, ...args) {
             }
 
             if (oldState >= STATE.WAKE_WORD_TRIGGERED) {
-                new Audio('/cancel.mp3').play().catch(e => console.error('Error playing cancel.mp3:', e));
+                new Audio(ASSETS_HOST + '/cancel.mp3').play().catch(e => console.error('Error playing cancel.mp3:', e));
             }
 
             if (bumblebee) {
@@ -890,7 +892,7 @@ function setVAState(newState, ...args) {
                     console.log("STATE.WAKE_WORD_TRIGGERED: VAD already listening.");
                 }
 
-                new Audio('/activate.mp3').play().catch(e => console.error('Error playing activate.mp3:', e));
+                new Audio(ASSETS_HOST + '/activate.mp3').play().catch(e => console.error('Error playing activate.mp3:', e));
 
                 wakeWordTimeoutId = setTimeout(() => {
                     if (store.vaState === STATE.WAKE_WORD_TRIGGERED && !pipelineActive) { // No speech started
@@ -940,7 +942,7 @@ function setVAState(newState, ...args) {
                 setVAState(STATE.IDLE);
                 return;
             }
-            new Audio('/analyzing.mp3').play().catch(e => console.error('Error playing analyzing.mp3:', e));
+            new Audio(ASSETS_HOST + '/analyzing.mp3').play().catch(e => console.error('Error playing analyzing.mp3:', e));
 
             console.log("STATE.SENDING_AUDIO: Waiting for Home Assistant response.");
             // VAD should have been paused by onSpeechEnd
