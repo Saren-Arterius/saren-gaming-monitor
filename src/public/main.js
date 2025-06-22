@@ -1093,7 +1093,7 @@ async function initializeApp() {
         bumblebee.setWorkersPath('/vendor/bumblebee/workers');
         bumblebee.addHotword('jarvis');
         bumblebee.addHotword('bumblebee');
-        bumblebee.setSensitivity(0.5);
+        bumblebee.setSensitivity(0.3);
         bumblebee.on('hotword', handleHotword);
         console.log("Bumblebee initialized.");
     } catch (error) {

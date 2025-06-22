@@ -22,8 +22,8 @@ export const CONFIG = {
                 networkTx: { max: 250 * 1024 * 1024 }
             },
             fanSpeed: {
-                cpu: { max: 4800 },
-                ssd: { max: 4800 }
+                cpu: { max: 4200 },
+                ssd: { max: 4200 }
             }
         },
     },

@@ -21,6 +21,7 @@ export class AppServer {
         this.setupExpress();
         this.setupSocketIO();
         this.setupMonitoring();
+        this.setupApiRoutes();
     }
 
     private setupExpress() {
@@ -43,7 +44,6 @@ export class AppServer {
             });
         });
     }
-
     private setupMonitoring() {
         (async () => {
             const metrics = await this.systemMonitor.updateMetrics();
@@ -52,7 +52,7 @@ export class AppServer {
             console.log(metrics);
             console.log(networkMetrics);
             console.log(JSON.stringify(storageInfo, null, 2));
-        })()
+        })();
 
         setInterval(async () => {
             const metrics = await this.systemMonitor.updateMetrics();
@@ -67,6 +67,24 @@ export class AppServer {
             console.log(storageInfo);
             this.io.emit('storageInfo', { storageInfo });
         }, 60000);
+    }
+
+    private setupApiRoutes() {
+        this.app.get('/current', async (req, res) => {
+            try {
+                const metrics = await this.systemMonitor.getMetrics();
+                const storageInfo = await this.systemMonitor.getStorageInfo();
+                const networkMetrics = this.systemMonitor.getNetworkMetrics()
+                res.json({
+                    info: CONFIG.initInfo,
+                    metrics,
+                    networkMetrics,
+                    storageInfo
+                });
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to fetch system metrics' });
+            }
+        });
     }
 
     start() {
