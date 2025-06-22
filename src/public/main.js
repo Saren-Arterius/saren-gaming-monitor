@@ -7,6 +7,7 @@ const HA_URL = location.hostname.includes('direct2') ? 'https://ha-direct2.wtako
 const ASSETS_HOST = location.hostname.includes('direct2') ? 'https://monitor-direct2.wtako.net' : 'https://monitor-direct.wtako.net';
 
 const EXIT_MAGIC = 'XXEXITXX';
+const REFRESH_MAGIC = 'XXREFRESHXX';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -113,6 +114,7 @@ class Store {
     isUserSpeaking = false;
     lastSTT = '';
     lastSTTAnimState = 0; // 1 = fading out, 2 = changing pos, 0 = fading in or stable;
+    lastTTSLength = 0;
     lastTTS = '';
     lastTTSAnimState = 0; // 1 = fading out, 2 = changing pos, 0 = fading in or stable;
     latestText = 0; // 0 = lastSTT, 1 = lastTTS
@@ -966,6 +968,11 @@ function setVAState(newState, ...args) {
 
             console.log("STATE.PLAYING_TTS: Playing TTS from URL:", ttsUrl);
             ttsAudioElement = new Audio(ttsUrl);
+            if (store.lastTTSLength > 20) {
+                ttsAudioElement.playbackRate = 1.5; // Set playback speed to 1.5x
+            } else {
+                ttsAudioElement.playbackRate = 1.25;
+            }
             ttsAudioElement.onended = () => {
                 console.log("TTS playback naturally ended.");
                 ttsAudioElement = null;
@@ -1376,6 +1383,7 @@ async function lastSTTAnimation(newText) {
 }
 
 async function lastTTSAnimation(newText) {
+    store.lastTTSLength = newText.length;
     store.latestText = 1;
     store.lastTTSAnimState = 1;
     await sleep(300);
@@ -1437,6 +1445,11 @@ function handlePipelineEvent(event) {
             }
             if (ttsText.includes(EXIT_MAGIC)) {
                 setVAState(STATE.IDLE); // Go back to idle
+                return;
+            }
+            if (ttsText.includes(REFRESH_MAGIC)) {
+                setVAState(STATE.IDLE); // Go back to idle
+                location.reload();
                 return;
             }
             lastTTSAnimation(ttsText);
