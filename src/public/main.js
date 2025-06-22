@@ -631,7 +631,7 @@ const Monitor = observer(() => {
                     alignItems: 'center',
                     justifyContent: 'center',
                     pointerEvents: (!!store.alertMessage && (store.alertExpire > Math.max(store.uiPollingTimestamp, Date.now()))) ? null : 'none',
-                    backdropFilter: 'blur(4px) brightness(0.65)',
+                    // backdropFilter: 'blur(4px) brightness(0.65)',
                     transition: 'all 0.3s ease-in-out',
                     opacity: (store.powerSaveAnimState && !!store.alertMessage && (store.alertExpire > Math.max(store.uiPollingTimestamp, Date.now()))) ? 1 : 0,
                 }}
@@ -639,7 +639,7 @@ const Monitor = observer(() => {
                         store.alertExpire = 0;
                     }}>
                     <div className="container" style={{
-                        backgroundColor: '#232323a0',
+                        backgroundColor: '#232323f0',
                         paddingTop: 20,
                         paddingRight: 20,
                         paddingLeft: 20,
@@ -670,8 +670,8 @@ const Monitor = observer(() => {
                     position: 'fixed',
                     width: '100%',
                     height: '100%',
-                    backgroundColor: '#232323a0',
-                    backdropFilter: 'blur(4px) brightness(0.65)',
+                    backgroundColor: '#232323f0',
+                    // backdropFilter: 'blur(4px) brightness(0.65)',
                     display: 'flex',
                     opacity: store.powerSaveAnimState && fsMessage ? 1 : 0,
                     flexDirection: 'column',

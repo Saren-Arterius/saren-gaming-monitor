@@ -58,7 +58,7 @@ body {
     border-radius: 50%;
     transform: rotate(-135deg);
     background: conic-gradient(#70CAD1 0%, #F7EE7F 37.5%, #A63D40 75%, transparent 0%);
-    filter: brightness(1.25);
+    /* filter: brightness(1.25); */
     z-index: 2;
 }
 
@@ -104,7 +104,7 @@ body {
 .container::before {
     content: '';
     position: fixed;
-    backdrop-filter: blur(32px) brightness(3) saturate(1);
+    /* backdrop-filter: blur(32px) brightness(3) saturate(1); */
     opacity: 0.25;
     z-index: 3;
     inset: 0px;
@@ -116,7 +116,7 @@ body {
 
     /* Your CSS rules here */
     .container::before {
-        backdrop-filter: blur(24px) brightness(3) saturate(1);
+        /* backdrop-filter: blur(24px) brightness(3) saturate(1); */
     }
 }
 
@@ -124,7 +124,7 @@ body {
 
     /* Your CSS rules here */
     .container::before {
-        backdrop-filter: blur(24px) brightness(3) saturate(1);
+        /* backdrop-filter: blur(24px) brightness(3) saturate(1); */
     }
 }
 
@@ -173,7 +173,7 @@ body {
     z-index: 2;
     position: absolute;
     top: 52px;
-    filter: contrast(2) brightness(1.5);
+    /* filter: contrast(2) brightness(1.5); */
 }
 
 dotlottie-player {
