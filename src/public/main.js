@@ -5,16 +5,21 @@ const RELAX_BUFFER_MS = 995;
 const WAKE_WORD_SPEECH_TIMEOUT = 7000;
 const HA_URL = location.hostname.includes('direct2') ? 'https://ha-direct2.wtako.net' : 'https://ha-direct.wtako.net';
 const ASSETS_HOST = location.hostname.includes('direct2') ? 'https://monitor-direct2.wtako.net' : 'https://monitor-direct.wtako.net';
+const BASE = ASSETS_HOST; // Alias for assets host
 
 const EXIT_MAGIC = 'XXEXITXX';
 const REFRESH_MAGIC = 'XXREFRESHXX';
+const VOLUME_MAGIC = 'XXVOLUMEXX';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const NIGHT_VOL_EXPONENT = 1;
+let DAY_VOL = parseFloat(localStorage.getItem('day_volume') || '1');
+let NIGHT_VOL = parseFloat(localStorage.getItem('night_volume') || '1');
 
 const COLOR_STOPS = [
-  { color: '#70CAD1', position: 0 },
-  { color: '#F7EE7F', position: 50 },
-  { color: '#A63D40', position: 100 }
+    { color: '#70CAD1', position: 0 },
+    { color: '#F7EE7F', position: 50 },
+    { color: '#A63D40', position: 100 }
 ];
 const STATE = {
     INITIALIZING: 0,
@@ -33,73 +38,73 @@ const { Observer, observer } = mobxReactLite;
 // const { Circle, Cpu, Activity } = require('react-feather');
 
 class Store {
-  // Configuration Constants
-  SYSTEM_INFO = {
-    hostname: 'PC',
-    cpu: 'AMD',
-    gpu: 'Nvidia',
-    case: 'PC Case',
-    os: 'Linux'
-  };
+    // Configuration Constants
+    SYSTEM_INFO = {
+        hostname: 'PC',
+        cpu: 'AMD',
+        gpu: 'Nvidia',
+        case: 'PC Case',
+        os: 'Linux'
+    };
 
-  GAUGE_LIMITS = {
-    temperature: {
-      cpu: { min: 30, max: 95 },
-      gpu: { min: 30, max: 80 },
-      ssd: { min: 30, max: 70 }
-    },
-    io: {
-      diskRead: { max: 3.75 * 1024 * 1024 * 1024 },
-      diskWrite: { max: 3.75 * 1024 * 1024 * 1024 },
-      networkRx: { max: 1.25 * 1024 * 1024 * 1024 },
-      networkTx: { max: 1.25 * 1024 * 1024 * 1024 }
-    },
-    fanSpeed: {
-      cpu: { max: 2200 },
-      motherboard: { max: 12000 }
-    }
-  };
+    GAUGE_LIMITS = {
+        temperature: {
+            cpu: { min: 30, max: 95 },
+            gpu: { min: 30, max: 80 },
+            ssd: { min: 30, max: 70 }
+        },
+        io: {
+            diskRead: { max: 3.75 * 1024 * 1024 * 1024 },
+            diskWrite: { max: 3.75 * 1024 * 1024 * 1024 },
+            networkRx: { max: 1.25 * 1024 * 1024 * 1024 },
+            networkTx: { max: 1.25 * 1024 * 1024 * 1024 }
+        },
+        fanSpeed: {
+            cpu: { max: 2200 },
+            motherboard: { max: 12000 }
+        }
+    };
 
-  MH_FAN = true;
+    MH_FAN = true;
 
-  alertMessage = null;
-  alertExpire = 0;
-  windowWidth = window.innerWidth;
-  windowHeight = window.innerHeight;
+    alertMessage = null;
+    alertExpire = 0;
+    windowWidth = window.innerWidth;
+    windowHeight = window.innerHeight;
 
-  storageInfo = {}
-  temperatures = {
-    cpu: 30,
-    gpu: 50,
-    ssd: 14
-  };
-  usage = {
-    cpu: 34,
-    gpu: 50,
-    ram: 35,
-    vram: 35,
-  };
-  usageMB = {
-    ram: 16384,
-    vram: 10240,
-  };
-  io = {
-    diskRead: 10000,
-    diskWrite: 10000,
-    networkRx: 1000054300,
-    networkTx: 1000054300,
-  };
-  fanSpeed = {
-    cpu: 1500,
-    motherboard: 2100
-  };
-  frequencies = {
-    cpu: [0],
-    gpuCore: 0,
-  };
-  pwr = {
-    gpu: 0,
-  };
+    storageInfo = {}
+    temperatures = {
+        cpu: 30,
+        gpu: 50,
+        ssd: 14
+    };
+    usage = {
+        cpu: 34,
+        gpu: 50,
+        ram: 35,
+        vram: 35,
+    };
+    usageMB = {
+        ram: 16384,
+        vram: 10240,
+    };
+    io = {
+        diskRead: 10000,
+        diskWrite: 10000,
+        networkRx: 1000054300,
+        networkTx: 1000054300,
+    };
+    fanSpeed = {
+        cpu: 1500,
+        motherboard: 2100
+    };
+    frequencies = {
+        cpu: [0],
+        gpuCore: 0,
+    };
+    pwr = {
+        gpu: 0,
+    };
 
     firstDataPushedAt = 0;
     lastDataPushedAt = 0;
@@ -119,52 +124,52 @@ class Store {
     lastTTSAnimState = 0; // 1 = fading out, 2 = changing pos, 0 = fading in or stable;
     latestText = 0; // 0 = lastSTT, 1 = lastTTS
 
-  constructor() {
-    makeAutoObservable(this);
-  }
+    constructor() {
+        makeAutoObservable(this);
+    }
 }
 
 const store = new Store();
 
 function getColorAtPercent(percent) {
-  let start = COLOR_STOPS[0];
-  let end = COLOR_STOPS[1];
+    let start = COLOR_STOPS[0];
+    let end = COLOR_STOPS[1];
 
-  for (let i = 1; i < COLOR_STOPS.length; i++) {
-    if (percent <= COLOR_STOPS[i].position) {
-      start = COLOR_STOPS[i - 1];
-      end = COLOR_STOPS[i];
-      break;
+    for (let i = 1; i < COLOR_STOPS.length; i++) {
+        if (percent <= COLOR_STOPS[i].position) {
+            start = COLOR_STOPS[i - 1];
+            end = COLOR_STOPS[i];
+            break;
+        }
     }
-  }
 
-  const range = end.position - start.position;
-  const adjustedPercent = (percent - start.position) / range;
+    const range = end.position - start.position;
+    const adjustedPercent = (percent - start.position) / range;
 
-  const startRGB = hexToRGB(start.color);
-  const endRGB = hexToRGB(end.color);
+    const startRGB = hexToRGB(start.color);
+    const endRGB = hexToRGB(end.color);
 
-  const r = Math.round(startRGB.r + (endRGB.r - startRGB.r) * adjustedPercent);
-  const g = Math.round(startRGB.g + (endRGB.g - startRGB.g) * adjustedPercent);
-  const b = Math.round(startRGB.b + (endRGB.b - startRGB.b) * adjustedPercent);
+    const r = Math.round(startRGB.r + (endRGB.r - startRGB.r) * adjustedPercent);
+    const g = Math.round(startRGB.g + (endRGB.g - startRGB.g) * adjustedPercent);
+    const b = Math.round(startRGB.b + (endRGB.b - startRGB.b) * adjustedPercent);
 
-  return rgbToHex(r, g, b);
+    return rgbToHex(r, g, b);
 }
 
 // Helper function to convert hex to RGB
 function hexToRGB(hex) {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return { r, g, b };
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return { r, g, b };
 }
 
 // Helper function to convert RGB to hex
 function rgbToHex(r, g, b) {
-  return '#' + [r, g, b].map(x => {
-    const hex = x.toString(16);
-    return hex.length === 1 ? '0' + hex : hex;
-  }).join('');
+    return '#' + [r, g, b].map(x => {
+        const hex = x.toString(16);
+        return hex.length === 1 ? '0' + hex : hex;
+    }).join('');
 }
 
 function formatBytes(bytes, decimals = 1, name = 'B') {
@@ -188,92 +193,92 @@ function formatBytes(bytes, decimals = 1, name = 'B') {
 
 
 function getGMT8Time(t) {
-  const now = new Date(t);
-  // Add GMT+8 offset
-  now.setHours(now.getHours());
+    const now = new Date(t);
+    // Add GMT+8 offset
+    now.setHours(now.getHours());
 
-  // Format components
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(now.getMinutes()).padStart(2, '0');
-  const seconds = String(now.getSeconds()).padStart(2, '0');
+    // Format components
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
 
-  // Combine in desired format
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    // Combine in desired format
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
 const Gauge = ({ value, valueMB, valueGB, min = 0, max, label, className, featherName, small, cpuFreq, gpuFreq, gpuPwr, clickFn, textColor, textExtra, labelExtra }) => {
-  useEffect(() => {
-    // Runs only on mount (empty dependency array)
-    feather.replace();
-  }, []);
+    useEffect(() => {
+        // Runs only on mount (empty dependency array)
+        feather.replace();
+    }, []);
 
-  let pct = ((value - min) / (max - min)) * 75;
-  if (pct > 75) pct = 75;
-  let iconColor = getColorAtPercent(pct / 0.75);
-  let valueExtra = {
-    'usage': '%',
-    'usage': '%',
-    'temperature': '°C',
-  }[className] || '';
-  if (className === 'io') {
-    value = formatBytes(value) + '/s';
-  }
-  let gaugeSize = small ? 120 : undefined;
-  let featherTop = small ? 40 : undefined;
-  let featherSize = undefined;
-  let gaugeValueMT = undefined;
-  let ioTransformLabelMarginTop = undefined;
-  let ioTransform = 'scale(0.8)';
-  let isSmallScreen = store.windowWidth < SMALL_WIDTH || store.windowHeight < SMALL_HEIGHT;
-  if (isSmallScreen) {
-    gaugeSize = small ? 60 : 80;
-    featherTop = small ? 20 : 30;
-    featherSize = small ? 20 : 24;
-    gaugeValueMT = small ? 45 : 60;
-    ioTransformLabelMarginTop = -10;
-    ioTransform = 'scale(0.5)';
-  }
-  let labelExtras = (valueMB ? `${valueMB} MB` : '') +
-      (valueGB ? `${valueGB} GB` : '') +
-      (cpuFreq ? `${Math.round(Math.min(...store.frequencies.cpu))}-${Math.round(Math.max(...store.frequencies.cpu))} MHz` : '') +
-      (gpuFreq ? `${store.frequencies.gpuCore} MHz` : '') +
-      (gpuPwr ? `${store.pwr.gpu} W` : '') +
-      (labelExtra || '');
-  return (
-    <div className="gauge" style={{ width: gaugeSize, height: gaugeSize, cursor: clickFn ? 'pointer' : undefined }} onClick={() => {
-      clickFn && clickFn();
-    }}>
-      <div className="gauge-body">
-        <div>
-          <div className="gauge-fill"></div>
-          <div className="gauge-cover"></div>
-          <div className="gauge-cover-2" style={{ "--a": `${pct}%` }}></div>
-          <div className="gauge-cover-outer">
-            <div className="feather-wrapper" style={{ "color": `${iconColor}`, top: featherTop }}>
-              <i data-feather={featherName} style={{ width: featherSize, height: featherSize }}></i>
+    let pct = ((value - min) / (max - min)) * 75;
+    if (pct > 75) pct = 75;
+    let iconColor = getColorAtPercent(pct / 0.75);
+    let valueExtra = {
+        'usage': '%',
+        'usage': '%',
+        'temperature': '°C',
+    }[className] || '';
+    if (className === 'io') {
+        value = formatBytes(value) + '/s';
+    }
+    let gaugeSize = small ? 120 : undefined;
+    let featherTop = small ? 40 : undefined;
+    let featherSize = undefined;
+    let gaugeValueMT = undefined;
+    let ioTransformLabelMarginTop = undefined;
+    let ioTransform = 'scale(0.8)';
+    let isSmallScreen = store.windowWidth < SMALL_WIDTH || store.windowHeight < SMALL_HEIGHT;
+    if (isSmallScreen) {
+        gaugeSize = small ? 60 : 80;
+        featherTop = small ? 20 : 30;
+        featherSize = small ? 20 : 24;
+        gaugeValueMT = small ? 45 : 60;
+        ioTransformLabelMarginTop = -10;
+        ioTransform = 'scale(0.5)';
+    }
+    let labelExtras = (valueMB ? `${valueMB} MB` : '') +
+        (valueGB ? `${valueGB} GB` : '') +
+        (cpuFreq ? `${Math.round(Math.min(...store.frequencies.cpu))}-${Math.round(Math.max(...store.frequencies.cpu))} MHz` : '') +
+        (gpuFreq ? `${store.frequencies.gpuCore} MHz` : '') +
+        (gpuPwr ? `${store.pwr.gpu} W` : '') +
+        (labelExtra || '');
+    return (
+        <div className="gauge" style={{ width: gaugeSize, height: gaugeSize, cursor: clickFn ? 'pointer' : undefined }} onClick={() => {
+            clickFn && clickFn();
+        }}>
+            <div className="gauge-body">
+                <div>
+                    <div className="gauge-fill"></div>
+                    <div className="gauge-cover"></div>
+                    <div className="gauge-cover-2" style={{ "--a": `${pct}%` }}></div>
+                    <div className="gauge-cover-outer">
+                        <div className="feather-wrapper" style={{ "color": `${iconColor}`, top: featherTop }}>
+                            <i data-feather={featherName} style={{ width: featherSize, height: featherSize }}></i>
+                        </div>
+                        <div className="gauge-value" style={{
+                            transform: className === 'io' ? ioTransform : undefined,
+                            marginTop: gaugeValueMT,
+                            color: textColor || undefined
+                        }}>{value}{valueExtra}{textExtra || ''}</div>
+                        <div className="gauge-label" style={{ marginTop: className === 'io' ? ioTransformLabelMarginTop : undefined }}>
+                            {label}
+                            {!isSmallScreen && labelExtras ? ' / ' + labelExtras : ''}
+                        </div>
+                        {isSmallScreen &&
+                            <div className="gauge-label">
+                                {labelExtras}
+                            </div>
+                        }
+                    </div>
+                </div>
             </div>
-            <div className="gauge-value" style={{
-              transform: className === 'io' ? ioTransform : undefined,
-              marginTop: gaugeValueMT,
-              color: textColor || undefined
-            }}>{value}{valueExtra}{textExtra || ''}</div>
-            <div className="gauge-label" style={{ marginTop: className === 'io' ? ioTransformLabelMarginTop : undefined }}>
-              {label}
-              {!isSmallScreen && labelExtras ? ' / ' + labelExtras : ''}
-            </div>
-            {isSmallScreen &&
-              <div className="gauge-label">
-                {labelExtras}
-              </div>
-            }
-          </div>
         </div>
-      </div>
-    </div>
-  );
+    );
 };
 
 const shouldPowerSave = () => {
@@ -299,27 +304,27 @@ const exitPowerSaveIfNeeded = () => {
 }
 
 const Monitor = observer(() => {
-  let loadLevel = 0;
-  let fullLoadItems = Object.values(store.usage).filter(u => u >= 80).length;
-  if (fullLoadItems >= 3) {
-    loadLevel = 2;
-  } else if (fullLoadItems === 2) {
-    loadLevel = 1;
-  }
-  let sectionMinHeight = undefined;
-  let infoFontSize = undefined;
-  let infoWidth = 220;
-  let infoMT = undefined;
-  let isSmallScreen = store.windowWidth < SMALL_WIDTH || store.windowHeight < SMALL_HEIGHT;
-  let isSmallPortrait = isSmallScreen && store.windowWidth > store.windowHeight;
-  if (isSmallScreen) {
-    sectionMinHeight = 170;
-    infoFontSize = '70%';
-    infoWidth = 150;
-    infoMT = -20;
-  }
+    let loadLevel = 0;
+    let fullLoadItems = Object.values(store.usage).filter(u => u >= 80).length;
+    if (fullLoadItems >= 3) {
+        loadLevel = 2;
+    } else if (fullLoadItems === 2) {
+        loadLevel = 1;
+    }
+    let sectionMinHeight = undefined;
+    let infoFontSize = undefined;
+    let infoWidth = 220;
+    let infoMT = undefined;
+    let isSmallScreen = store.windowWidth < SMALL_WIDTH || store.windowHeight < SMALL_HEIGHT;
+    let isSmallPortrait = isSmallScreen && store.windowWidth > store.windowHeight;
+    if (isSmallScreen) {
+        sectionMinHeight = 170;
+        infoFontSize = '70%';
+        infoWidth = 150;
+        infoMT = -20;
+    }
 
-  console.log('render');
+    console.log('render');
 
     let fsMessage = (() => {
         if (store.lastUpdate === 0) return (
@@ -419,209 +424,209 @@ const Monitor = observer(() => {
         }
     })();
 
-  return (
-    <>
-      <div className="container" style={{ display: isSmallPortrait ? 'flex' : undefined, flexWrap: isSmallPortrait ? 'wrap' : undefined, maxWidth: isSmallPortrait ? '100vw' : undefined }}>
-        <div style={{ paddingTop: location.hostname.includes('direct2') ? 30 : 10 }}></div>
-        <div className="section" style={{ minHeight: sectionMinHeight, width: isSmallPortrait ? 'calc(50% - 40px)' : undefined, marginRight: isSmallPortrait ? 80 : undefined }}>
-          <div className="section-title">Temperature</div>
-          <div className="gauge-container">
-            <Gauge
-              value={store.temperatures.cpu}
-              min={store.GAUGE_LIMITS.temperature.cpu.min}
-              max={store.GAUGE_LIMITS.temperature.cpu.max}
-              label="CPU"
-              className="temperature"
-              featherName="cpu"
-            />
-            <Gauge
-              value={store.temperatures.gpu}
-              min={store.GAUGE_LIMITS.temperature.gpu.min}
-              max={store.GAUGE_LIMITS.temperature.gpu.max}
-              label="GPU"
-              className="temperature"
-              featherName="image"
-              gpuPwr
-            />
-            <Gauge
-              value={store.temperatures.ssd}
-              min={store.GAUGE_LIMITS.temperature.ssd.min}
-              max={store.GAUGE_LIMITS.temperature.ssd.max}
-              label="SSD"
-              className="temperature"
-              featherName="hard-drive"
-              clickFn={() => showStorageInfo("system")}
-              textColor={STORAGE_TEXT_COLOR[store.storageInfo.system?.info?.status || 0]}
-              textExtra={STORAGE_EXTRA_TEXT[store.storageInfo.system?.info?.status || 0]}
-            />
-          </div>
-        </div>
-        <div className="section" style={{ minHeight: sectionMinHeight, width: isSmallPortrait ? 'calc(50% - 40px)' : undefined }}>
-          <div className="section-title">Usage</div>
-          <div className="gauge-container" style={{ marginTop: isSmallPortrait ? 25 : undefined }}>
-            <Gauge value={store.usage.cpu} max={100} label="CPU" className="usage" featherName="cpu" small cpuFreq />
-            <Gauge value={store.usage.gpu} max={100} label="GPU" className="usage" featherName="image" small gpuFreq />
-            <Gauge value={store.usage.ram} valueMB={store.usageMB.ram} max={100} label="RAM" className="usage" featherName="server" small />
-            <Gauge value={store.usage.vram} valueMB={store.usageMB.vram} max={100} label="VRAM" className="usage" featherName="monitor" small />
-          </div>
-        </div>
-        <div className="section" style={{
-          minHeight: sectionMinHeight,
-          width: isSmallPortrait ? 'calc(50% - 40px)' : undefined,
-          marginRight: isSmallPortrait ? 40 : undefined,
-          marginTop: isSmallPortrait ? 10 : undefined
-        }}>
-          <div className="section-title">I/O</div>
-          <div className="gauge-container" style={{
-            marginTop: isSmallPortrait ? 20 : undefined
-          }}>
-            <Gauge
-              value={store.io.diskRead}
-              max={store.GAUGE_LIMITS.io.diskRead.max}
-              label="Disk Read"
-              className="io"
-              featherName="hard-drive"
-              small
-            />
-            <Gauge
-              value={store.io.diskWrite}
-              max={store.GAUGE_LIMITS.io.diskWrite.max}
-              label="Disk Write"
-              className="io"
-              featherName="activity"
-              small
-            />
-            <Gauge
-              value={store.io.networkRx}
-              max={store.GAUGE_LIMITS.io.networkRx.max}
-              label="Network RX"
-              className="io"
-              featherName="globe"
-              small
-            />
-            <Gauge
-              value={store.io.networkTx}
-              max={store.GAUGE_LIMITS.io.networkTx.max}
-              label="Network TX"
-              className="io"
-              featherName="globe"
-              small
-            />
-          </div>
-        </div>
-        <div style={{
-          display: 'flex',
-          marginTop: isSmallPortrait ? 10 : infoMT,
-          width: isSmallPortrait ? 'calc(50% - 40px)' : undefined,
-          flexGrow: isSmallPortrait ? 1 : undefined
-        }} >
-          <div className="section" style={{ flexGrow: 1, minHeight: sectionMinHeight }}  >
-            <div className="section-title">Fan Speed</div>
-            <div className="gauge-container">
-              <Gauge
-                value={store.fanSpeed.cpu}
-                max={store.GAUGE_LIMITS.fanSpeed.cpu.max}
-                label="CPU"
-                className="fan"
-                featherName="cpu"
-              />
-              <Gauge
-                value={store.fanSpeed.motherboard}
-                max={store.GAUGE_LIMITS.fanSpeed.motherboard.max}
-                label="Motherboard"
-                className="fan"
-                featherName="server"
-              />
-            </div>
-
-          </div>
-          <div className="section" style={{ display: 'flex', width: isSmallPortrait ? 150 : infoWidth, minHeight: sectionMinHeight }} >
-            <div className="section-title">&nbsp;</div>
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'end',
-              justifyContent: 'end',
-              paddingBottom: isSmallScreen ? 0 : 10,
-              width: '100%',
-              fontSize: infoFontSize,
-              zIndex: -2
-            }}>
-              <div style={{ fontSize: '1.5em', fontWeight: 600, zIndex: -2, color: COLOR_STOPS[loadLevel].color }}>
-                {store.SYSTEM_INFO.hostname}
-              </div>
-              <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.cpu}</div>
-              <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.gpu}</div>
-              <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.case}</div>
-              <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.os}</div>
-              <div style={{ fontWeight: 500, opacity: 0.8 }}>{store.system}</div>
-              <div style={{ fontWeight: 600 }}>{getGMT8Time(store.lastUpdate)}</div>
-            </div>
-          </div>
-        </div>
-        {!!store.MH_FAN && (
-          <div className="section" style={{ width: '100%', marginTop: isSmallPortrait ? 20 : undefined, minHeight: 0, paddingBottom: 10 }}>
-            <div className="section-title">Monster Hunter Wilds</div>
-            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              {(() => {
-                const goalDate = new Date(1740718800 * 1000); // Convert seconds to milliseconds
-                const startDate = new Date(goalDate - 120 * 24 * 60 * 60 * 1000); // 120 days before the goal
-
-                const totalSeconds = (goalDate - startDate) / 1000;
-                const elapsedSeconds = Math.max((store.lastUpdate - startDate) / 1000, 0); // Ensure non-negative value
-                const progressPercentage = ((elapsedSeconds / totalSeconds) * 100).toFixed(3); // Calculate the percentage
-
-                const remainingSeconds = (goalDate - store.lastUpdate) / 1000;
-                const daysLeft = (remainingSeconds / (3600 * 24)).toFixed(3);
-                const hoursLeft = (remainingSeconds / 3600).toFixed(3);
-                const minutesLeft = (remainingSeconds / 60).toFixed(2);
-                return (
-                  <div style={{ width: '100%' }}>
-                    <div style={{
-                      height: 10,
-                      position: 'relative',
-                      backgroundColor: '#e0e0e0',
-                      borderRadius: 5,
-                      overflow: 'hidden',
-                      zIndex: -2
+    return (
+        <>
+            <div className="container" style={{ display: isSmallPortrait ? 'flex' : undefined, flexWrap: isSmallPortrait ? 'wrap' : undefined, maxWidth: isSmallPortrait ? '100vw' : undefined }}>
+                <div style={{ paddingTop: location.hostname.includes('direct2') ? 30 : 10 }}></div>
+                <div className="section" style={{ minHeight: sectionMinHeight, width: isSmallPortrait ? 'calc(50% - 40px)' : undefined, marginRight: isSmallPortrait ? 80 : undefined }}>
+                    <div className="section-title">Temperature</div>
+                    <div className="gauge-container">
+                        <Gauge
+                            value={store.temperatures.cpu}
+                            min={store.GAUGE_LIMITS.temperature.cpu.min}
+                            max={store.GAUGE_LIMITS.temperature.cpu.max}
+                            label="CPU"
+                            className="temperature"
+                            featherName="cpu"
+                        />
+                        <Gauge
+                            value={store.temperatures.gpu}
+                            min={store.GAUGE_LIMITS.temperature.gpu.min}
+                            max={store.GAUGE_LIMITS.temperature.gpu.max}
+                            label="GPU"
+                            className="temperature"
+                            featherName="image"
+                            gpuPwr
+                        />
+                        <Gauge
+                            value={store.temperatures.ssd}
+                            min={store.GAUGE_LIMITS.temperature.ssd.min}
+                            max={store.GAUGE_LIMITS.temperature.ssd.max}
+                            label="SSD"
+                            className="temperature"
+                            featherName="hard-drive"
+                            clickFn={() => showStorageInfo("system")}
+                            textColor={STORAGE_TEXT_COLOR[store.storageInfo.system?.info?.status || 0]}
+                            textExtra={STORAGE_EXTRA_TEXT[store.storageInfo.system?.info?.status || 0]}
+                        />
+                    </div>
+                </div>
+                <div className="section" style={{ minHeight: sectionMinHeight, width: isSmallPortrait ? 'calc(50% - 40px)' : undefined }}>
+                    <div className="section-title">Usage</div>
+                    <div className="gauge-container" style={{ marginTop: isSmallPortrait ? 25 : undefined }}>
+                        <Gauge value={store.usage.cpu} max={100} label="CPU" className="usage" featherName="cpu" small cpuFreq />
+                        <Gauge value={store.usage.gpu} max={100} label="GPU" className="usage" featherName="image" small gpuFreq />
+                        <Gauge value={store.usage.ram} valueMB={store.usageMB.ram} max={100} label="RAM" className="usage" featherName="server" small />
+                        <Gauge value={store.usage.vram} valueMB={store.usageMB.vram} max={100} label="VRAM" className="usage" featherName="monitor" small />
+                    </div>
+                </div>
+                <div className="section" style={{
+                    minHeight: sectionMinHeight,
+                    width: isSmallPortrait ? 'calc(50% - 40px)' : undefined,
+                    marginRight: isSmallPortrait ? 40 : undefined,
+                    marginTop: isSmallPortrait ? 10 : undefined
+                }}>
+                    <div className="section-title">I/O</div>
+                    <div className="gauge-container" style={{
+                        marginTop: isSmallPortrait ? 20 : undefined
                     }}>
-                      {/* Gradient Background */}
-                      <div
-                        style={{
-                          height: 10,
-                          width: '100%', // Full width to cover the entire base bar
-                          background: `linear-gradient(to right, #70CAD1 0%, #F7EE7F 50%, #A63D40 100%)`,
-                          position: 'absolute',
-                          top: 0,
-                          left: 0,
-                        }}
-                      />
+                        <Gauge
+                            value={store.io.diskRead}
+                            max={store.GAUGE_LIMITS.io.diskRead.max}
+                            label="Disk Read"
+                            className="io"
+                            featherName="hard-drive"
+                            small
+                        />
+                        <Gauge
+                            value={store.io.diskWrite}
+                            max={store.GAUGE_LIMITS.io.diskWrite.max}
+                            label="Disk Write"
+                            className="io"
+                            featherName="activity"
+                            small
+                        />
+                        <Gauge
+                            value={store.io.networkRx}
+                            max={store.GAUGE_LIMITS.io.networkRx.max}
+                            label="Network RX"
+                            className="io"
+                            featherName="globe"
+                            small
+                        />
+                        <Gauge
+                            value={store.io.networkTx}
+                            max={store.GAUGE_LIMITS.io.networkTx.max}
+                            label="Network TX"
+                            className="io"
+                            featherName="globe"
+                            small
+                        />
+                    </div>
+                </div>
+                <div style={{
+                    display: 'flex',
+                    marginTop: isSmallPortrait ? 10 : infoMT,
+                    width: isSmallPortrait ? 'calc(50% - 40px)' : undefined,
+                    flexGrow: isSmallPortrait ? 1 : undefined
+                }} >
+                    <div className="section" style={{ flexGrow: 1, minHeight: sectionMinHeight }}  >
+                        <div className="section-title">Fan Speed</div>
+                        <div className="gauge-container">
+                            <Gauge
+                                value={store.fanSpeed.cpu}
+                                max={store.GAUGE_LIMITS.fanSpeed.cpu.max}
+                                label="CPU"
+                                className="fan"
+                                featherName="cpu"
+                            />
+                            <Gauge
+                                value={store.fanSpeed.motherboard}
+                                max={store.GAUGE_LIMITS.fanSpeed.motherboard.max}
+                                label="Motherboard"
+                                className="fan"
+                                featherName="server"
+                            />
+                        </div>
 
-                      {/* Masking Progress Bar */}
-                      <div
-                        style={{
-                          height: 10,
-                          width: `${100 - progressPercentage}%`, // Starts from the right and reduces as progress increases
-                          background: 'white', // White to mask the underlying gradient
-                          position: 'absolute',
-                          top: 0,
-                          right: 0, // Start from the right side
-                          borderTopRightRadius: 5, // Inverse border radius for the top right corner
-                          borderBottomRightRadius: 5, // Inverse border radius for the bottom right corner
-                        }}
-                      />
                     </div>
-                    <div style={{ marginTop: 5, textAlign: 'left', width: '100%', opacity: 0.6, fontSize: '80%' }}>
-                      {progressPercentage}% - {daysLeft} days | {hoursLeft} hours | {minutesLeft} minutes left
+                    <div className="section" style={{ display: 'flex', width: isSmallPortrait ? 150 : infoWidth, minHeight: sectionMinHeight }} >
+                        <div className="section-title">&nbsp;</div>
+                        <div style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'end',
+                            justifyContent: 'end',
+                            paddingBottom: isSmallScreen ? 0 : 10,
+                            width: '100%',
+                            fontSize: infoFontSize,
+                            zIndex: -2
+                        }}>
+                            <div style={{ fontSize: '1.5em', fontWeight: 600, zIndex: -2, color: COLOR_STOPS[loadLevel].color }}>
+                                {store.SYSTEM_INFO.hostname}
+                            </div>
+                            <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.cpu}</div>
+                            <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.gpu}</div>
+                            <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.case}</div>
+                            <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.os}</div>
+                            <div style={{ fontWeight: 500, opacity: 0.8 }}>{store.system}</div>
+                            <div style={{ fontWeight: 600 }}>{getGMT8Time(store.lastUpdate)}</div>
+                        </div>
                     </div>
-                  </div>
-                );
-              })()}
+                </div>
+                {!!store.MH_FAN && (
+                    <div className="section" style={{ width: '100%', marginTop: isSmallPortrait ? 20 : undefined, minHeight: 0, paddingBottom: 10 }}>
+                        <div className="section-title">Monster Hunter Wilds</div>
+                        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                            {(() => {
+                                const goalDate = new Date(1740718800 * 1000); // Convert seconds to milliseconds
+                                const startDate = new Date(goalDate - 120 * 24 * 60 * 60 * 1000); // 120 days before the goal
+
+                                const totalSeconds = (goalDate - startDate) / 1000;
+                                const elapsedSeconds = Math.max((store.lastUpdate - startDate) / 1000, 0); // Ensure non-negative value
+                                const progressPercentage = ((elapsedSeconds / totalSeconds) * 100).toFixed(3); // Calculate the percentage
+
+                                const remainingSeconds = (goalDate - store.lastUpdate) / 1000;
+                                const daysLeft = (remainingSeconds / (3600 * 24)).toFixed(3);
+                                const hoursLeft = (remainingSeconds / 3600).toFixed(3);
+                                const minutesLeft = (remainingSeconds / 60).toFixed(2);
+                                return (
+                                    <div style={{ width: '100%' }}>
+                                        <div style={{
+                                            height: 10,
+                                            position: 'relative',
+                                            backgroundColor: '#e0e0e0',
+                                            borderRadius: 5,
+                                            overflow: 'hidden',
+                                            zIndex: -2
+                                        }}>
+                                            {/* Gradient Background */}
+                                            <div
+                                                style={{
+                                                    height: 10,
+                                                    width: '100%', // Full width to cover the entire base bar
+                                                    background: `linear-gradient(to right, #70CAD1 0%, #F7EE7F 50%, #A63D40 100%)`,
+                                                    position: 'absolute',
+                                                    top: 0,
+                                                    left: 0,
+                                                }}
+                                            />
+
+                                            {/* Masking Progress Bar */}
+                                            <div
+                                                style={{
+                                                    height: 10,
+                                                    width: `${100 - progressPercentage}%`, // Starts from the right and reduces as progress increases
+                                                    background: 'white', // White to mask the underlying gradient
+                                                    position: 'absolute',
+                                                    top: 0,
+                                                    right: 0, // Start from the right side
+                                                    borderTopRightRadius: 5, // Inverse border radius for the top right corner
+                                                    borderBottomRightRadius: 5, // Inverse border radius for the bottom right corner
+                                                }}
+                                            />
+                                        </div>
+                                        <div style={{ marginTop: 5, textAlign: 'left', width: '100%', opacity: 0.6, fontSize: '80%' }}>
+                                            {progressPercentage}% - {daysLeft} days | {hoursLeft} hours | {minutesLeft} minutes left
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+                        </div>
+                    </div>
+                )}
             </div>
-          </div>
-        )}
-      </div>
-      {!shouldPowerSave() &&
+            {!shouldPowerSave() &&
                 <div style={{
                     display: 'flex',
                     width: '100%',
@@ -684,46 +689,49 @@ const Monitor = observer(() => {
                     pointerEvents: store.vaState >= 2 ? null : 'none'
                 }} onClick={() => {
                     if (store.vaState === STATE.PLAYING_TTS) {
-                        setVAState(STATE.WAKE_WORD_TRIGGERED);
+                        setVAState(STATE.WAKE_WORD_TRIGGERED); // Interrupt TTS and listen again
                         return;
                     }
                     if (store.vaState === STATE.WAKE_WORD_TRIGGERED && !store.isUserSpeaking) {
-                        pipelineActive = false;
+                        pipelineActive = false; // Cancel listening
                         resetAudioStreamingState();
                         setVAState(STATE.IDLE);
                         return;
+                    }
+                    if (store.vaState === STATE.SENDING_AUDIO) {
+                        resetAll(false);
                     }
                 }}>
                     {fsMessage}
                 </div>
             }
-    </>
-  )
+        </>
+    )
 });
 
 ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <Observer>{() => <Monitor />}</Observer>
-  </React.StrictMode>
+    <React.StrictMode>
+        <Observer>{() => <Monitor />}</Observer>
+    </React.StrictMode>
 );
 
 function formatTimeDiff(timestamp) {
-  const now = Date.now();
-  const diff = Math.floor((now - timestamp) / 1000); // seconds
+    const now = Date.now();
+    const diff = Math.floor((now - timestamp) / 1000); // seconds
 
-  if (diff < 60) return `${diff} seconds ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)} minutes ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)} hours ago`;
-  return `${Math.floor(diff / 86400)} days ago`;
+    if (diff < 60) return `${diff} seconds ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)} minutes ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} hours ago`;
+    return `${Math.floor(diff / 86400)} days ago`;
 }
 
 function formatHealthReport(section, data) {
-  const info = data.info;
-  const smart = info.metrics.smart;
-  const fs = info.metrics.filesystem;
-  const lastUpdate = formatTimeDiff(data.lastUpdate);
+    const info = data.info;
+    const smart = info.metrics.smart;
+    const fs = info.metrics.filesystem;
+    const lastUpdate = formatTimeDiff(data.lastUpdate);
 
-  return `Storage Health Report for [${section}] (${data.paths.join(', ')})
+    return `Storage Health Report for [${section}] (${data.paths.join(', ')})
 Status: ${info.statusText}
 Last updated: ${lastUpdate}
 
@@ -747,14 +755,39 @@ ${info.issues.length > 0 ? '\nIssues Found:\n' + info.issues.map(issue => '• '
 
 
 function showStorageInfo(section) {
-  console.log(section, JSON.parse(JSON.stringify(store.storageInfo[section])))
-  panelAlert(formatHealthReport(section, store.storageInfo[section]), `Storage Info (${section})`)
+    console.log(section, JSON.parse(JSON.stringify(store.storageInfo[section])))
+    panelAlert(formatHealthReport(section, store.storageInfo[section]), `Storage Info (${section})`)
 }
 
 function panelAlert(content, title, expire = 10000) {
     exitPowerSaveIfNeeded();
     store.alertMessage = [title, content];
     store.alertExpire = Date.now() + 10000;
+}
+
+function setVolume(volume) {
+    let newVolume = DAY_VOL * 100; // Current day volume as percentage
+    if (typeof volume === 'string') {
+        const trimmedVolume = volume.trim();
+        if (trimmedVolume.startsWith('+')) {
+            const increment = parseInt(trimmedVolume.substring(1)) || 10;
+            newVolume += increment;
+        } else if (trimmedVolume.startsWith('-')) {
+            const decrement = parseInt(trimmedVolume.substring(1)) || 10;
+            newVolume -= decrement;
+        } else {
+            newVolume = parseInt(trimmedVolume);
+        }
+    } else {
+        newVolume = volume;
+    }
+    newVolume = Math.max(0, Math.min(100, newVolume));
+    DAY_VOL = newVolume / 100;
+    NIGHT_VOL = (Math.pow(newVolume, NIGHT_VOL_EXPONENT)) / 100; // Maintain proportion if desired
+    localStorage.setItem('day_volume', DAY_VOL.toString());
+    localStorage.setItem('night_volume', NIGHT_VOL.toString());
+    panelAlert('', `Volume set to ${parseInt(newVolume)}%`, 3000);
+    console.log(`Volume set to: DAY_VOL=${DAY_VOL}, NIGHT_VOL=${NIGHT_VOL}`);
 }
 
 const socket = io();
@@ -789,12 +822,12 @@ socket.on('metrics', saveToMobxStore('metrics'));
 
 // Listen for connection
 socket.on('connect', () => {
-  console.log('Connected to server');
+    console.log('Connected to server');
 });
 
 window.addEventListener('resize', () => {
-  store.windowWidth = window.innerWidth;
-  store.windowHeight = window.innerHeight;
+    store.windowWidth = window.innerWidth;
+    store.windowHeight = window.innerHeight;
 });
 
 
@@ -814,6 +847,7 @@ let sttBinaryHandlerId = null;
 let wakeWordTimeoutId = null;
 let ttsAudioElement = null;           // To control TTS playback
 let conversationId = newConversationId();
+const audioCache = {};
 // Configuration - HA_URL is constant, TOKEN and PIPELINE_NAME are fetched
 let HA_TOKEN = null;
 let HA_ASSIST_PIPELINE_NAME = null;
@@ -821,6 +855,58 @@ let HA_ASSIST_PIPELINE_NAME = null;
 // --- Helper Functions ---
 function getStateName(stateValue) {
     return Object.keys(STATE).find(key => STATE[key] === stateValue) || 'UNKNOWN_STATE';
+}
+async function fetchAndCacheAudio(url, short) {
+    if (audioCache[url]) {
+        return audioCache[url].cloneNode();
+    }
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const blob = await response.blob();
+        const audioUrl = URL.createObjectURL(blob);
+        const audio = new Audio(audioUrl);
+        audioCache[url] = audio; // Cache the audio element
+        audio.addEventListener('ended', () => URL.revokeObjectURL(audioUrl), { once: true });
+        audio.addEventListener('error', () => URL.revokeObjectURL(audioUrl), { once: true });
+        if (short) {
+            setTimeout(() => {
+                delete audioCache[url];
+            }, 60000);
+        }
+        return audio.cloneNode(); // Return a clone for playback
+    } catch (e) {
+        console.error('Failed to fetch and cache audio:', url, e);
+        return new Audio(url); // Fallback to direct New Audio if fetch fails
+    }
+}
+
+async function playAudio(url) {
+    let v = DAY_VOL;
+    const currentHour = new Date().getHours();
+    if (currentHour >= 23 || currentHour < 8) { // Between 11 PM and 8 AM
+        v = NIGHT_VOL;
+    }
+    try {
+        const audio = await fetchAndCacheAudio(url);
+        audio.volume = v;
+        return audio.play().catch(e => console.error('Error playing audio from cache:', e));
+    } catch (e) {
+        console.error('Error getting audio from cache/fetching, falling back:', e);
+        const audio = new Audio(url);
+        audio.volume = v;
+        return audio.play().catch(e => console.error('Error playing audio fallback:', e));
+    }
+}
+
+function killTTS() {
+    if (ttsAudioElement) {
+        ttsAudioElement.pause();
+        ttsAudioElement.src = '';
+        ttsAudioElement.onended = null;
+        ttsAudioElement.onerror = null;
+        ttsAudioElement = null;
+    }
 }
 
 // --- State Management ---
@@ -838,14 +924,8 @@ function setVAState(newState, ...args) {
     }
 
     if (oldState === STATE.PLAYING_TTS && newState !== STATE.PLAYING_TTS) {
-        if (ttsAudioElement) {
-            console.log("Stopping TTS audio due to state change from PLAYING_TTS.");
-            ttsAudioElement.pause();
-            ttsAudioElement.src = '';
-            ttsAudioElement.onended = null;
-            ttsAudioElement.onerror = null;
-            ttsAudioElement = null;
-        }
+        console.log("Stopping TTS audio due to state change from PLAYING_TTS.");
+        killTTS();
     }
 
     // Actions for ENTERING the new state
@@ -863,13 +943,12 @@ function setVAState(newState, ...args) {
             }
 
             if (oldState >= STATE.WAKE_WORD_TRIGGERED) {
-                new Audio(ASSETS_HOST + '/cancel.mp3').play().catch(e => console.error('Error playing cancel.mp3:', e));
+                playAudio(BASE + '/cancel.mp3').catch(e => console.error('Error playing cancel.mp3:', e));
             }
 
             if (bumblebee) {
                 bumblebee.start();
             }
-
             break;
 
         case STATE.WAKE_WORD_TRIGGERED:
@@ -894,7 +973,7 @@ function setVAState(newState, ...args) {
                     console.log("STATE.WAKE_WORD_TRIGGERED: VAD already listening.");
                 }
 
-                new Audio(ASSETS_HOST + '/activate.mp3').play().catch(e => console.error('Error playing activate.mp3:', e));
+                playAudio(BASE + '/activate.mp3').catch(e => console.error('Error playing activate.mp3:', e));
 
                 wakeWordTimeoutId = setTimeout(() => {
                     if (store.vaState === STATE.WAKE_WORD_TRIGGERED && !pipelineActive) { // No speech started
@@ -944,7 +1023,7 @@ function setVAState(newState, ...args) {
                 setVAState(STATE.IDLE);
                 return;
             }
-            new Audio(ASSETS_HOST + '/analyzing.mp3').play().catch(e => console.error('Error playing analyzing.mp3:', e));
+            playAudio(BASE + '/analyzing.mp3').catch(e => console.error('Error playing analyzing.mp3:', e));
 
             console.log("STATE.SENDING_AUDIO: Waiting for Home Assistant response.");
             // VAD should have been paused by onSpeechEnd
@@ -954,48 +1033,36 @@ function setVAState(newState, ...args) {
             exitPowerSaveIfNeeded();
             const ttsUrl = args[0];
             if (!ttsUrl) {
-                console.error("STATE.PLAYING_TTS: No TTS URL provided.");
                 setVAState(STATE.WAKE_WORD_TRIGGERED);
                 return;
             }
-
-            pipelineActive = false; // HA interaction part is done
-
-            if (ttsAudioElement) { // Clear any previous TTS
-                ttsAudioElement.pause(); ttsAudioElement.src = '';
-                ttsAudioElement.onended = null; ttsAudioElement.onerror = null;
-            }
-
-            console.log("STATE.PLAYING_TTS: Playing TTS from URL:", ttsUrl);
-            ttsAudioElement = new Audio(ttsUrl);
-            if (store.lastTTSLength > 20) {
-                ttsAudioElement.playbackRate = 1.5; // Set playback speed to 1.5x
-            } else {
-                ttsAudioElement.playbackRate = 1.25;
-            }
-            ttsAudioElement.onended = () => {
-                console.log("TTS playback naturally ended.");
-                ttsAudioElement = null;
-                if (store.vaState === STATE.PLAYING_TTS) {
-                    setVAState(STATE.WAKE_WORD_TRIGGERED);
+            pipelineActive = false;
+            killTTS();
+            (async () => {
+                try {
+                    ttsAudioElement = await fetchAndCacheAudio(ttsUrl, true);
+                    ttsAudioElement.playbackRate = store.lastTTSLength > 20 ? 1.5 : 1.25;
+                    ttsAudioElement.onended = () => {
+                        ttsAudioElement = null;
+                        if (store.vaState === STATE.PLAYING_TTS) setVAState(STATE.WAKE_WORD_TRIGGERED);
+                    };
+                    ttsAudioElement.onerror = (e) => {
+                        // panelAlert("Error playing assistant response. E2: " + e.message);
+                        ttsAudioElement = null;
+                        if (store.vaState === STATE.PLAYING_TTS) setVAState(STATE.WAKE_WORD_TRIGGERED);
+                    };
+                    let v = DAY_VOL;
+                    const currentHour = new Date().getHours();
+                    if (currentHour >= 23 || currentHour < 8) { // Between 11 PM and 8 AM
+                        v = NIGHT_VOL;
+                    }
+                    ttsAudioElement.volume = v;
+                    await ttsAudioElement.play();
+                } catch (e) {
+                    panelAlert("Could not play assistant response. E2: " + e.message);
+                    if (store.vaState === STATE.PLAYING_TTS) setVAState(STATE.WAKE_WORD_TRIGGERED);
                 }
-            };
-            ttsAudioElement.onerror = (e) => {
-                console.error('Error playing TTS audio:', e);
-                panelAlert("Error playing assistant response.");
-                ttsAudioElement = null;
-                if (store.vaState === STATE.PLAYING_TTS) {
-                    setVAState(STATE.WAKE_WORD_TRIGGERED);
-                }
-            };
-            ttsAudioElement.play().catch(e => {
-                console.error('Error initiating TTS playback:', e);
-                panelAlert("Could not play assistant response.");
-                ttsAudioElement = null;
-                if (store.vaState === STATE.PLAYING_TTS) {
-                    setVAState(STATE.WAKE_WORD_TRIGGERED);
-                }
-            });
+            })();
             break;
     }
 }
@@ -1027,6 +1094,12 @@ async function initializeApp() {
     HA_TOKEN = getHAToken();
     HA_ASSIST_PIPELINE_NAME = getHAPipelineName();
 
+    await Promise.all([
+        fetchAndCacheAudio(BASE + '/activate.mp3'),
+        fetchAndCacheAudio(BASE + '/cancel.mp3'),
+        fetchAndCacheAudio(BASE + '/analyzing.mp3')
+    ]).catch(e => console.warn('Failed to pre-cache audio files:', e));
+
     if (!HA_TOKEN || !HA_ASSIST_PIPELINE_NAME) {
         // ... (alert logic as before) ...
         // panelAlert("Configuration incomplete. Please set Token and Pipeline Name.");
@@ -1034,7 +1107,6 @@ async function initializeApp() {
         return;
     }
     console.log("HA Token and Pipeline Name found.");
-
     try {
         bumblebee = new Bumblebee();
         bumblebee.setWorkersPath('/vendor/bumblebee/workers');
@@ -1048,7 +1120,6 @@ async function initializeApp() {
         panelAlert("Error initializing hotword engine: " + error.message);
         return;
     }
-
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         stream.getTracks().forEach(track => track.stop());
@@ -1083,12 +1154,14 @@ async function initializeApp() {
 
 // --- Event Handlers and Core Logic ---
 
-function resetAll() {
+function resetAll(notify = true) {
     pipelineActive = false;
     resetAudioStreamingState();
     conversationId = newConversationId();
     setVAState(STATE.IDLE);
-    panelAlert(null, <h1><center>AI Reset Success</center></h1>, 3000);
+    if (notify) {
+        panelAlert(<h1><center>AI Reset Success</center></h1>, null, 3000);
+    }
 }
 
 async function handleHotword(hotwordDetails) {
@@ -1098,19 +1171,22 @@ async function handleHotword(hotwordDetails) {
         resetAll();
         return;
     };
+
+    let oldConvoId = conversationId;
+    // reset convo id (prevent state fuckup if SENDING_AUDIO)
+    if (store.vaState === STATE.SENDING_AUDIO || (store.vaState === STATE.WAKE_WORD_TRIGGERED && pipelineActive)) {
+        conversationId = newConversationId();
+    }
+    // reset convo id if convo too old
     if (Date.now() - store.voiceLastActiveAt > 300 * 1000) {
-        console.log('Resetting conversation')
         conversationId = newConversationId();
     }
     store.voiceLastActiveAt = Date.now();
-    store.lastSTT = '';
-    store.lastTTS = '幫緊你幫緊你...';
-
-    if (store.vaState === STATE.SENDING_AUDIO ||
-        (store.vaState === STATE.WAKE_WORD_TRIGGERED && pipelineActive)) {
-        console.log("Pipeline or VAD already processing speech for HA. Ignoring hotword.");
-        return;
+    if (conversationId !== oldConvoId || store.vaState === STATE.IDLE) {
+        store.lastSTT = '';
+        store.lastTTS = '幫緊你幫緊你...';
     }
+
 
     // Re-check config
     HA_TOKEN = getHAToken(); HA_ASSIST_PIPELINE_NAME = getHAPipelineName();
@@ -1228,7 +1304,6 @@ function connectWebSocket() {
             pipelineActive = false;
             resetAudioStreamingState();
             haWebSocket = null;
-
             if (store.vaState !== STATE.INITIALIZING && store.vaState !== STATE.IDLE) {
                 console.log("WebSocket closed, transitioning to IDLE state.");
                 if (wasPipelineActive) panelAlert("Connection to Home Assistant lost.");
@@ -1275,7 +1350,7 @@ function initializeVAD() {
                 model: 'v5',
                 onnxWASMBasePath: '/vendor/ort/',
                 baseAssetPath: '/vendor/vad/',
-                redemptionFrames: 16,
+                redemptionFrames: 20,
                 onSpeechRealStart: () => {
                     console.log("VAD: Speech really started.");
                     store.voiceLastActiveAt = Date.now();
@@ -1443,13 +1518,18 @@ function handlePipelineEvent(event) {
                 console.log(ttsText);
                 return;
             }
-            if (ttsText.includes(EXIT_MAGIC)) {
-                setVAState(STATE.IDLE); // Go back to idle
-                return;
-            }
-            if (ttsText.includes(REFRESH_MAGIC)) {
-                setVAState(STATE.IDLE); // Go back to idle
-                location.reload();
+            if (ttsText.includes(EXIT_MAGIC)) { setVAState(STATE.IDLE); return; }
+            if (ttsText.includes(REFRESH_MAGIC)) { location.reload(); return; }
+            if (ttsText.includes(VOLUME_MAGIC)) {
+                const volumeMatch = ttsText.match(new RegExp(`${VOLUME_MAGIC}\\s*([+-]?\\d+)?`));
+                if (volumeMatch && volumeMatch[1] !== undefined) {
+                    setVolume(volumeMatch[1]);
+                } else if (ttsText.includes(`${VOLUME_MAGIC} +`)) {
+                    setVolume('+10');
+                } else if (ttsText.includes(`${VOLUME_MAGIC} -`)) {
+                    setVolume('-10');
+                }
+                resetAll(false);
                 return;
             }
             lastTTSAnimation(ttsText);
@@ -1623,3 +1703,7 @@ setInterval(() => {
         console.log('store.uiPollingTimestamp = now', 'setInterval');
     }
 }, 1000);
+
+document.querySelector("body").addEventListener('click', (e) => {
+    document.querySelector("body").requestFullscreen();
+});
