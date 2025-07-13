@@ -1,5 +1,8 @@
-body {
+html, body {
     background-color: rgb(10, 20, 30);
+}
+
+body {
     justify-content: center;
     align-items: center;
     min-height: 100vh;
