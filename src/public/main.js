@@ -1350,6 +1350,9 @@ function initializeVAD() {
             resolve(); return;
         }
         console.log("Initializing VAD...");
+
+        let preSpeechBuffer = [];
+
         try {
             if (typeof vad === 'undefined' || typeof vad.MicVAD === 'undefined') {
                 return reject(new Error("VAD library not found."));
@@ -1359,17 +1362,22 @@ function initializeVAD() {
                 onnxWASMBasePath: '/vendor/ort/',
                 baseAssetPath: '/vendor/vad/',
                 redemptionFrames: 20,
+                onSpeechStart: () => {
+                    preSpeechBuffer = [];
+                    if (store.vaState === STATE.WAKE_WORD_TRIGGERED) {
+                        initiateHAPipelineRun();
+                    }
+                },
                 onSpeechRealStart: () => {
                     store.vadState = 'onSpeechRealStart';
                     if (store.vaState === STATE.WAKE_WORD_TRIGGERED) {
                         console.log("VAD: Speech really started.");
                         store.voiceLastActiveAt = Date.now();
                         store.isUserSpeaking = true;
-                        if (wakeWordTimeoutId) { // Clear "no speech after wake word" timeout
+                        if (wakeWordTimeoutId) {
                             clearTimeout(wakeWordTimeoutId);
                             wakeWordTimeoutId = null;
                         }
-                        initiateHAPipelineRun(); // This will set pipelineActive = true on success
                     } else if (store.vaState === STATE.PLAYING_TTS) {
 
                     } else {
@@ -1377,10 +1385,24 @@ function initializeVAD() {
                     }
                 },
                 onFrameProcessed: (probabilities, frame) => {
-                    if (pipelineActive && haReadyForAudio) {
-                        // We could also check probabilities.isSpeech > 0.5 for extra safety, but isUserSpeaking should be enough
+                    // console.log('onFrameProcessed')
+                    // if (!pipelineActive) {
+                    //     return;
+                    // }
+                    if (store.isUserSpeaking && haReadyForAudio) {
+                        if (preSpeechBuffer.length > 0) {
+                            console.log(`Sending ${preSpeechBuffer.length} buffered audio frames.`);
+                            for (const bufferedFrame of preSpeechBuffer) {
+                                sendAudioToHA(bufferedFrame);
+                            }
+                            preSpeechBuffer = [];
+                        }
                         sendAudioToHA(frame);
+                        return;
                     }
+
+                    // Buffer frames if speech isn't "really" started yet OR if HA isn't ready for audio.
+                    preSpeechBuffer.push(frame);
                 },
                 onSpeechEnd: (audio) => { // The final audio buffer is received but we ignore it for streaming
                     store.vadState = 'onSpeechEnd';
