@@ -124,6 +124,7 @@ class Store {
     lastTTSAnimState = 0; // 1 = fading out, 2 = changing pos, 0 = fading in or stable;
     latestText = 0; // 0 = lastSTT, 1 = lastTTS
 
+    vadState = '';
     constructor() {
         makeAutoObservable(this);
     }
@@ -1058,6 +1059,13 @@ function setVAState(newState, ...args) {
                     }
                     ttsAudioElement.volume = v;
                     await ttsAudioElement.play();
+
+                    if (!myvad.listening) {
+                        console.log("STATE.PLAYING_TTS: Starting VAD listening.");
+                        myvad.start();
+                    } else {
+                        console.log("STATE.PLAYING_TTS: VAD already listening.");
+                    }
                 } catch (e) {
                     panelAlert("Could not play assistant response. E2: " + e.message);
                     if (store.vaState === STATE.PLAYING_TTS) setVAState(STATE.WAKE_WORD_TRIGGERED);
@@ -1352,26 +1360,31 @@ function initializeVAD() {
                 baseAssetPath: '/vendor/vad/',
                 redemptionFrames: 20,
                 onSpeechRealStart: () => {
-                    console.log("VAD: Speech really started.");
-                    store.voiceLastActiveAt = Date.now();
-                    store.isUserSpeaking = true;
-                    if (wakeWordTimeoutId) { // Clear "no speech after wake word" timeout
-                        clearTimeout(wakeWordTimeoutId);
-                        wakeWordTimeoutId = null;
-                    }
+                    store.vadState = 'onSpeechRealStart';
                     if (store.vaState === STATE.WAKE_WORD_TRIGGERED) {
+                        console.log("VAD: Speech really started.");
+                        store.voiceLastActiveAt = Date.now();
+                        store.isUserSpeaking = true;
+                        if (wakeWordTimeoutId) { // Clear "no speech after wake word" timeout
+                            clearTimeout(wakeWordTimeoutId);
+                            wakeWordTimeoutId = null;
+                        }
                         initiateHAPipelineRun(); // This will set pipelineActive = true on success
+                    } else if (store.vaState === STATE.PLAYING_TTS) {
+
                     } else {
                         console.warn(`VAD: Speech started in unexpected state: ${getStateName(store.vaState)}.`);
                     }
                 },
                 onSpeechEnd: async (finalAudioBuffer) => { // finalAudioBuffer is the ENTIRE utterance
-                    console.log("VAD: Speech ended.");
-                    if (myvad && myvad.listening) {
-                        console.log("VAD: Speech ended, pausing VAD for this interaction.");
-                        myvad.pause();
-                    }
+                    store.vadState = 'onSpeechEnd';
                     if (store.vaState === STATE.WAKE_WORD_TRIGGERED && pipelineActive) {
+                        console.log("VAD: Speech ended.");
+                        if (myvad && myvad.listening) {
+                            console.log("VAD: Speech ended, pausing VAD for this interaction.");
+                            myvad.pause();
+                        }
+
                         // Send the complete utterance. processAndSendAudio will queue it.
                         // sendAudioToHA will send it as one message (or you could adapt it to chunk if HA prefers).
                         // The 'true' flag ensures sendHAStreamEnd is called afterwards.
@@ -1379,11 +1392,11 @@ function initializeVAD() {
                         setVAState(STATE.SENDING_AUDIO); // Transition: VAD speech done, now waiting for HA
                     } else {
                         console.warn(`VAD: Speech ended, but state (${getStateName(store.vaState)}) or pipelineActive (${pipelineActive}) is not receptive.`);
-                        if (!pipelineActive && store.vaState === STATE.WAKE_WORD_TRIGGERED) {
-                            // Speech ended, but pipeline never started or failed early.
-                            panelAlert("Could not process your request.");
-                            setVAState(STATE.IDLE);
-                        }
+                        // if (!pipelineActive && store.vaState === STATE.WAKE_WORD_TRIGGERED) {
+                        //     // Speech ended, but pipeline never started or failed early.
+                        //     panelAlert("Could not process your request.");
+                        //     setVAState(STATE.IDLE);
+                        // }
                     }
                 },
             });

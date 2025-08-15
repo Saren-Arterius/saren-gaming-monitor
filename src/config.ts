@@ -23,7 +23,7 @@ export const CONFIG = {
                 networkTx: { max: 3 * 1024 * 1024 * 1024 }
             },
             fanSpeed: {
-                cpu: { max: 2200 },
+                cpu: { max: 2500 },
                 motherboard: { max: 12000 }
             }
         },
