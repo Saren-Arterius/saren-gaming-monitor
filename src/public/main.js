@@ -1376,19 +1376,21 @@ function initializeVAD() {
                         console.warn(`VAD: Speech started in unexpected state: ${getStateName(store.vaState)}.`);
                     }
                 },
-                onSpeechEnd: async (finalAudioBuffer) => { // finalAudioBuffer is the ENTIRE utterance
+                onFrameProcessed: (probabilities, frame) => {
+                    if (pipelineActive && haReadyForAudio) {
+                        // We could also check probabilities.isSpeech > 0.5 for extra safety, but isUserSpeaking should be enough
+                        sendAudioToHA(frame);
+                    }
+                },
+                onSpeechEnd: (audio) => { // The final audio buffer is received but we ignore it for streaming
                     store.vadState = 'onSpeechEnd';
                     if (store.vaState === STATE.WAKE_WORD_TRIGGERED && pipelineActive) {
-                        console.log("VAD: Speech ended.");
+                        console.log("VAD: Speech ended. Sending end-of-stream.");
                         if (myvad && myvad.listening) {
                             console.log("VAD: Speech ended, pausing VAD for this interaction.");
                             myvad.pause();
                         }
-
-                        // Send the complete utterance. processAndSendAudio will queue it.
-                        // sendAudioToHA will send it as one message (or you could adapt it to chunk if HA prefers).
-                        // The 'true' flag ensures sendHAStreamEnd is called afterwards.
-                        await processAndSendAudio(finalAudioBuffer);
+                        sendHAStreamEnd();
                         setVAState(STATE.SENDING_AUDIO); // Transition: VAD speech done, now waiting for HA
                     } else {
                         console.warn(`VAD: Speech ended, but state (${getStateName(store.vaState)}) or pipelineActive (${pipelineActive}) is not receptive.`);
@@ -1445,19 +1447,6 @@ function float32ToInt16(buffer) {
 
 function newConversationId() {
     return 'monitor-' + Date.now();
-}
-
-async function processAndSendAudio(audio) {
-    if (!pipelineActive || !(store.vaState === STATE.WAKE_WORD_TRIGGERED || store.vaState === STATE.SENDING_AUDIO)) {
-        if (pipelineActive) console.warn("processAndSendAudio: called while pipelineActive but in incompatible state: " + getStateName(store.vaState));
-        // Do not resetAudioStreamingState here if pipelineActive is true, as it might be a brief mismatch.
-        return;
-    }
-
-    if (haReadyForAudio) {
-        await sendAudioToHA(audio);
-        sendHAStreamEnd();
-    }
 }
 
 async function lastSTTAnimation(newText) {
@@ -1592,7 +1581,7 @@ function handlePipelineEvent(event) {
             break;
     }
 }
-async function sendAudioToHA(audioBuffer) {
+function sendAudioToHA(audioBuffer) {
     if (!haWebSocket || haWebSocket.readyState !== WebSocket.OPEN || !pipelineActive || !haReadyForAudio) {
         console.warn("sendAudioToHA: Conditions not met for sending audio.");
         return;
