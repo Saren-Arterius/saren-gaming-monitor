@@ -4,7 +4,7 @@ const SMALL_HEIGHT = 420;
 const POWERSAVE_MS = 30000;
 const RELAX_BUFFER_MS = 995;
 const WAKE_WORD_SPEECH_TIMEOUT = 7000;
-const HA_URL = 'https://ha-direct.wtako.net';
+const HA_URL = 'https://' + location.host.replace('monitor-', 'ha-');
 const EXIT_MAGIC = 'XXEXITXX';
 const REFRESH_MAGIC = 'XXREFRESHXX';
 
@@ -1683,3 +1683,7 @@ setInterval(() => {
         console.log('store.uiPollingTimestamp = now', 'setInterval');
     }
 }, 1000);
+
+document.querySelector("body").addEventListener('click', (e) => {
+    document.querySelector("body").requestFullscreen();
+});
