@@ -233,6 +233,7 @@ export class SystemMonitor {
         }
 
         // Media Errors
+        // health.media_errors = 1; // troll
         results.metrics.smart.mediaErrors = {
             count: health.media_errors,
             formatted: `${health.media_errors} media errors`
