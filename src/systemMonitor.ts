@@ -107,7 +107,12 @@ export class SystemMonitor {
                 diskRead: 0,
                 diskWrite: 0,
                 networkRx: 0,
-                networkTx: 0
+                networkTx: 0,
+                networkPacketsRx: 0,
+                networkPacketsTx: 0,
+                networkRxTotal: 0,
+                networkTxTotal: 0,
+                activeConn: parseInt(data.activeConn)
             },
             fanSpeed: {
                 cpu: parseInt(data.sensors[CONFIG.sensors.fans.controller][CONFIG.sensors.fans.cpu.id][CONFIG.sensors.fans.cpu.input]),
@@ -121,6 +126,7 @@ export class SystemMonitor {
                 gpu: parseFloat(data.gpu[6]),
             },
             system,
+            uptime: parseFloat(data.uptime),
             lastUpdate: now
         };
 
@@ -162,6 +168,14 @@ export class SystemMonitor {
                 result.io.networkRx = Math.round((parseInt(rxBytes) - parseInt(prevRxBytes)) / timeDiff) + ibRx;
                 result.io.networkTx = Math.round((parseInt(txBytes) - parseInt(prevTxBytes)) / timeDiff) + ibTx;
 
+                result.io.networkRx = Math.round((parseInt(rxBytes) - parseInt(prevRxBytes)) / timeDiff);
+                result.io.networkTx = Math.round((parseInt(txBytes) - parseInt(prevTxBytes)) / timeDiff);
+
+                result.io.networkPacketsRx = Math.round((parseInt(rxPackets) - parseInt(prevRxPackets)) / timeDiff);
+                result.io.networkPacketsTx = Math.round((parseInt(txPackets) - parseInt(prevTxPackets)) / timeDiff);
+
+                result.io.networkRxTotal = rxBytes;
+                result.io.networkTxTotal = txBytes;
             }
         }
 

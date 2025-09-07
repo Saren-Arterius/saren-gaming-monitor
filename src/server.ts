@@ -62,6 +62,40 @@ export class AppServer {
         }, 60000);
     }
 
+    private setupApiRoutes() {
+        this.app.get('/network-total', async (req, res) => {
+            try {
+                const metrics = this.systemMonitor.getMetrics();
+                res.json({
+                    networkRxTotal: metrics?.io.networkRxTotal,
+                    networkTxTotal: metrics?.io.networkTxTotal,
+                    uptime: metrics?.uptime
+                });
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to fetch system metrics' });
+            }
+        });
+
+        this.app.get('/current', (req, res) => {
+            try {
+                const metrics = this.systemMonitor.getMetrics();
+                const storageInfo = this.systemMonitor.getStorageInfo();
+                const networkMetrics = JSON.parse(JSON.stringify(this.systemMonitor.getNetworkMetrics()))
+                if (req.query.secret != process.env.SECRET) {
+                    delete networkMetrics.ip_history;
+                }
+                res.json({
+                    info: CONFIG.initInfo,
+                    metrics,
+                    networkMetrics,
+                    storageInfo
+                });
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to fetch system metrics' });
+            }
+        });
+    }
+
     start() {
         this.httpServer.listen(CONFIG.server.port, () => {
             console.log(`Server running on http://localhost:${CONFIG.server.port}`);

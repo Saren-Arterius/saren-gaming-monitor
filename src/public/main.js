@@ -11,6 +11,7 @@ const EXIT_MAGIC = 'XXEXITXX';
 const REFRESH_MAGIC = 'XXREFRESHXX';
 const VOLUME_MAGIC = 'XXVOLUMEXX';
 
+const NIGHT_H = 22;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const NIGHT_VOL_EXPONENT = 1;
 let DAY_VOL = parseFloat(localStorage.getItem('day_volume') || '1');
@@ -110,7 +111,7 @@ class Store {
     lastDataPushedAt = 0;
 
     lastUpdate = 0; // server's timestamp
-    uiPollingTimestamp = 0;
+    _uiPollingTimestamp = 0;
     voiceLastActiveAt = 0;
     lastPanelActive = Date.now();
     powerSaveAnimState = 1; // force opacity 
@@ -125,6 +126,68 @@ class Store {
     latestText = 0; // 0 = lastSTT, 1 = lastTTS
 
     vadState = '';
+    mainUI = null;
+    _lastInteract = Date.now();
+
+    set vaState(value) {
+        this._vaState = value;
+        this.lastInteract = Date.now(); // Update lastInteract when vaState changes
+    }
+
+    get vaState() {
+        return this._vaState;
+    }
+
+    set uiPollingTimestamp(value) {
+        this._uiPollingTimestamp = value;
+        this.updateBrightness();
+    }
+
+    get uiPollingTimestamp() {
+        return this._uiPollingTimestamp;
+    }
+
+    set lastInteract(value) {
+        this._lastInteract = value;
+        this.updateBrightness();
+    }
+
+    get lastInteract() {
+        return this._lastInteract;
+    }
+
+    get mainUIBrightness() {
+        console.log('get mainUIBrightness');
+        let mainUIBrightness = 1;
+        const now = new Date(this.uiPollingTimestamp);
+        const currentHour = now.getHours();
+        if (currentHour >= NIGHT_H || currentHour < 6) { // Only dim mainUI between 10 PM and 6 AM
+            const timeSinceLastInteract = (now.getTime() - this.lastInteract) / 1000; // in seconds
+            if (timeSinceLastInteract <= 30) {
+                mainUIBrightness = 1;
+            } else if (timeSinceLastInteract > 30 && timeSinceLastInteract <= 90) {
+                // Linearly interpolate from 1 to 0.3 as timeSinceLastInteract goes from 30 to 90 seconds
+                // (timeSinceLastInteract - 30) / (90 - 30) gives a value from 0 to 1
+                // 1 - (value * 0.7) means 1 when value is 0, and 0.3 when value is 1
+                mainUIBrightness = 1 - (((timeSinceLastInteract - 30) / 60) * 0.7);
+            } else {
+                mainUIBrightness = 0.3; // Stays at 0.3 after 90 seconds of inactivity
+            }
+            console.log({ timeSinceLastInteract, mainUIBrightness })
+        } else {
+            mainUIBrightness = 1; // Do not dim if current hour is not between 10 PM and 6 AM
+        }
+        return Math.max(0, Math.min(1, mainUIBrightness));
+    }
+
+    updateBrightness() {
+        if (!this.mainUI) return;
+        console.log('updateBrightness');
+        if (this.mainUI) {
+            this.mainUI.style.filter = `brightness(${this.mainUIBrightness})`;
+        }
+    }
+
     constructor() {
         makeAutoObservable(this);
     }
@@ -577,43 +640,86 @@ const Monitor = observer(() => {
                         </div>
                     </div>
                 </div>
-                {!!store.MH_FAN && (
-                    <div className="section" style={{ width: '100%', marginTop: isSmallPortrait ? 20 : undefined, minHeight: 0, paddingBottom: 10 }}>
-                        <div className="section-title">Monster Hunter Wilds</div>
-                        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                            {(() => {
-                                const goalDate = new Date(1740718800 * 1000); // Convert seconds to milliseconds
-                                const startDate = new Date(goalDate - 120 * 24 * 60 * 60 * 1000); // 120 days before the goal
+                {store.networkMetrics?.ping_statistics?.minute_history && (
+                    <div style={{
+                        width: '100%',
+                        paddingTop: isSmallPortrait ? 8 : 16,
+                        paddingBottom: 16,
+                        cursor: 'pointer',
+                        transform: 'scale(1)',
+                        transition: 'transform 0.2s ease-in-out, filter 0.2s ease-in-out'
+                    }}
+                        onMouseEnter={window.matchMedia("(hover: hover) and (pointer: fine)").matches ? (e) => { e.currentTarget.style.transform = 'scale(1.02)'; e.currentTarget.style.filter = 'brightness(1.5)'; } : undefined}
+                        onMouseLeave={window.matchMedia("(hover: hover) and (pointer: fine)").matches ? (e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.filter = 'brightness(1)'; } : undefined}
+                        onTouchStart={(e) => { e.currentTarget.style.transform = 'scale(1.02)'; e.currentTarget.style.filter = 'brightness(1.5)'; }}
+                        onTouchEnd={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.filter = 'brightness(1)'; }}
+                        onClick={() => {
+                            const formatShort = (date) => {
+                                return new Intl.DateTimeFormat('en-US', {
+                                    month: 'long',
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    second: '2-digit',
+                                    hour12: false
+                                }).format(date).replace(/, (\d+):/, ', $1:');
+                            };
 
-                                const totalSeconds = (goalDate - startDate) / 1000;
-                                const elapsedSeconds = Math.max((store.lastUpdate - startDate) / 1000, 0); // Ensure non-negative value
-                                const progressPercentage = ((elapsedSeconds / totalSeconds) * 100).toFixed(3); // Calculate the percentage
+                            let message = `Active Connections: ${store.io.activeConn}
 
-                                const remainingSeconds = (goalDate - store.lastUpdate) / 1000;
-                                const daysLeft = (remainingSeconds / (3600 * 24)).toFixed(3);
-                                const hoursLeft = (remainingSeconds / 3600).toFixed(3);
-                                const minutesLeft = (remainingSeconds / 60).toFixed(2);
+Open Ports: ${store.networkMetrics.internet_ports.map(s => s.replace(/open/g, '').trim())?.join(', ') || 'None'}
+
+Ping latency:
+Current: ${store.networkMetrics.ping_statistics.latency.latest}ms
+1 Minute Avg: ${store.networkMetrics.ping_statistics.latency.last1m}ms
+5 Minutes Avg: ${store.networkMetrics.ping_statistics.latency.last5m}ms
+1 Hour Avg: ${store.networkMetrics.ping_statistics.latency.last1h}ms
+24 Hours Avg: ${store.networkMetrics.ping_statistics.latency.last24h}ms
+
+Packet loss:
+Current: ${store.networkMetrics.ping_statistics.packet_loss.latest_percent}%
+1 Minute: ${store.networkMetrics.ping_statistics.packet_loss.last1m}%
+5 Minutes: ${store.networkMetrics.ping_statistics.packet_loss.last5m}%
+1 Hour: ${store.networkMetrics.ping_statistics.packet_loss.last1h}%
+24 Hours: ${store.networkMetrics.ping_statistics.packet_loss.last24h}%
+
+Recent outages:
+${store.networkMetrics.ping_statistics.outages.reverse().map(o => {
+                                const start = formatShort(new Date(o.start));
+                                const end = formatShort(new Date(o.end));
+                                const mins = Math.floor(o.duration_seconds / 60);
+                                const secs = o.duration_seconds % 60;
+                                return `${start} – ${end} (${mins}m${secs}s)`;
+                            }).join('\n') || 'None in last 24 hours'}
+
+Last updated: ${formatTimeDiff(store.networkMetrics?.last_updated)}`;
+                            panelAlert(message, 'Network Info');
+                        }}>
+                        <div style={{
+                            display: 'flex',
+                            flexGrow: isSmallPortrait ? 1 : undefined,
+                            justifyContent: 'space-between',
+                            position: 'relative',
+                            zIndex: 2
+                        }}>
+                            {store.networkMetrics?.ping_statistics?.minute_history.map((h, i, arr) => {
+                                const timestamp = new Date(store.networkMetrics.ping_statistics.minute_history[i].timestamp);
+                                const formattedTime = timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
                                 return (
-                                    <div style={{ width: '100%' }}>
-                                        <div style={{
-                                            height: 10,
-                                            position: 'relative',
-                                            backgroundColor: '#e0e0e0',
-                                            borderRadius: 5,
-                                            overflow: 'hidden',
-                                            zIndex: -2
-                                        }}>
-                                            {/* Gradient Background */}
-                                            <div
-                                                style={{
-                                                    height: 10,
-                                                    width: '100%', // Full width to cover the entire base bar
-                                                    background: `linear-gradient(to right, #70CAD1 0%, #F7EE7F 50%, #A63D40 100%)`,
-                                                    position: 'absolute',
-                                                    top: 0,
-                                                    left: 0,
-                                                }}
-                                            />
+                                    <div
+                                        key={i}
+                                        style={{
+                                            width: '100%',
+                                            marginRight: '0.05em',
+                                            height: 20,
+                                            opacity: 1 - ((arr.length - (i + 1)) * 0.015),
+                                            backgroundColor: h.latency_ms === null || h.latency_ms === -1
+                                                ? '#444444'
+                                                : getColorAtPercent(Math.min(100, Math.max((h.latency_ms ** 2) / 10, h.packet_loss_percent))),
+                                            position: 'relative'
+                                        }}
+                                        title={`Time: ${formattedTime}\nLatency: ${h.latency_ms !== null && h.latency_ms !== -1 ? h.latency_ms + 'ms' : 'N/A'}\nPacket Loss: ${h.packet_loss_percent !== null && h.packet_loss_percent !== -1 ? h.packet_loss_percent + '%' : 'N/A'}`}
+                                    >
 
                                             {/* Masking Progress Bar */}
                                             <div
@@ -633,12 +739,42 @@ const Monitor = observer(() => {
                                             {progressPercentage}% - {daysLeft} days | {hoursLeft} hours | {minutesLeft} minutes left
                                         </div>
                                     </div>
-                                );
+                        );
                             })()}
+                    </div>
+                        {store.networkMetrics?.ping_statistics?.latency && (
+                    <div style={{
+                        zIndex: 2,
+                        marginTop: 4,
+                        justifyContent: 'space-between',
+                        position: 'relative',
+                        fontSize: '0.8em',
+                        display: 'flex'
+                    }}>
+                        <div
+                            style={{ fontWeight: 400, opacity: 0.5, marginLeft: -2, }}
+                        >{store.networkMetrics?.internet_ports.map(s => s.replace(/open/g, '').trim()).join(', ')}
                         </div>
+                        <div style={{
+                            fontWeight: 400,
+                            opacity: 0.8,
+                            marginRight: -2,
+                            color: getColorAtPercent(Math.min(100, Math.max(
+                                ((store.networkMetrics?.ping_statistics?.latency.last1m || store.networkMetrics.ping_statistics.latency.latest) ** 2) / 10,
+                                store.networkMetrics?.ping_statistics?.packet_loss.last1m)
+                            ))
+                        }} >
+                            {Date.now() - store.networkMetrics?.last_updated > 7000 && <>{formatTimeDiff(store.networkMetrics?.last_updated)} •&nbsp;</>}
+                            {store.io.activeConn} conns •&nbsp;
+                            {store.networkMetrics?.ping_statistics?.latency.last1m?.toFixed(1) || store.networkMetrics.ping_statistics.latency.latest?.toFixed(1)}ms •&nbsp;
+                            {store.networkMetrics?.ping_statistics?.packet_loss.last1m?.toFixed(1)}% loss
+                        </div>
+
                     </div>
                 )}
-            </div>
+            </div >
+                )}
+        </div >
             {!shouldPowerSave() &&
                 <div style={{
                     display: 'flex',
@@ -682,42 +818,43 @@ const Monitor = observer(() => {
                         </div>
                     </div>
                 </div>
-            }
-            {!shouldPowerSave() &&
-                <div style={{
-                    position: 'fixed',
-                    width: '100%',
-                    height: '100%',
-                    backgroundColor: '#232323f0',
-                    // backdropFilter: 'blur(4px) brightness(0.65)',
-                    display: 'flex',
-                    opacity: store.powerSaveAnimState && fsMessage ? 1 : 0,
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    zIndex: 5,
-                    marginLeft: -20,
-                    marginRight: -20,
-                    transition: 'all 0.5s ease-in-out',
-                    pointerEvents: store.vaState >= 2 ? null : 'none'
-                }} onClick={() => {
-                    if (store.vaState === STATE.PLAYING_TTS) {
-                        setVAState(STATE.WAKE_WORD_TRIGGERED); // Interrupt TTS and listen again
-                        return;
-                    }
-                    if (store.vaState === STATE.WAKE_WORD_TRIGGERED && !store.isUserSpeaking) {
-                        pipelineActive = false; // Cancel listening
-                        resetAudioStreamingState();
-                        setVAState(STATE.IDLE);
-                        return;
-                    }
-                    if (store.vaState === STATE.SENDING_AUDIO) {
-                        resetAll(false);
-                    }
-                }}>
-                    {fsMessage}
-                </div>
-            }
+}
+{
+    !shouldPowerSave() &&
+    <div style={{
+        position: 'fixed',
+        width: '100%',
+        height: '100%',
+        backgroundColor: '#232323f0',
+        // backdropFilter: 'blur(4px) brightness(0.65)',
+        display: 'flex',
+        opacity: store.powerSaveAnimState && fsMessage ? 1 : 0,
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 5,
+        marginLeft: -20,
+        marginRight: -20,
+        transition: 'all 0.5s ease-in-out',
+        pointerEvents: store.vaState >= 2 ? null : 'none'
+    }} onClick={() => {
+        if (store.vaState === STATE.PLAYING_TTS) {
+            setVAState(STATE.WAKE_WORD_TRIGGERED); // Interrupt TTS and listen again
+            return;
+        }
+        if (store.vaState === STATE.WAKE_WORD_TRIGGERED && !store.isUserSpeaking) {
+            pipelineActive = false; // Cancel listening
+            resetAudioStreamingState();
+            setVAState(STATE.IDLE);
+            return;
+        }
+        if (store.vaState === STATE.SENDING_AUDIO) {
+            resetAll(false);
+        }
+    }}>
+        {fsMessage}
+    </div>
+}
         </>
     )
 });
@@ -1727,8 +1864,18 @@ setInterval(() => {
         store.uiPollingTimestamp = now;
         console.log('store.uiPollingTimestamp = now', 'setInterval');
     }
+    if (!store.mainUI) {
+        store.mainUI = document.querySelector("html");
+    }
 }, 1000);
 
 document.querySelector("body").addEventListener('click', (e) => {
     document.querySelector("body").requestFullscreen();
+    store.lastInteract = Date.now();
 });
+
+document.querySelector("body").addEventListener('touchstart', (e) => {
+    store.lastInteract = Date.now();
+});
+
+
