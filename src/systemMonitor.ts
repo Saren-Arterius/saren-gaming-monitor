@@ -163,6 +163,8 @@ export class SystemMonitor {
                 networkTx: 0,
                 networkPacketsRx: 0,
                 networkPacketsTx: 0,
+                networkRxTotal: 0,
+                networkTxTotal: 0,
                 activeConn: parseInt(data.activeConn)
             },
             fanSpeed: {
@@ -175,6 +177,7 @@ export class SystemMonitor {
             pwr: {
             },
             system,
+            uptime: parseFloat(data.uptime),
             lastUpdate: now
         };
 
@@ -217,9 +220,12 @@ export class SystemMonitor {
 
                 result.io.networkRx = Math.round((parseInt(rxBytes) - parseInt(prevRxBytes)) / timeDiff);
                 result.io.networkTx = Math.round((parseInt(txBytes) - parseInt(prevTxBytes)) / timeDiff);
-                
+
                 result.io.networkPacketsRx = Math.round((parseInt(rxPackets) - parseInt(prevRxPackets)) / timeDiff);
                 result.io.networkPacketsTx = Math.round((parseInt(txPackets) - parseInt(prevTxPackets)) / timeDiff);
+
+                result.io.networkRxTotal = rxBytes;
+                result.io.networkTxTotal = txBytes;
             }
         }
 

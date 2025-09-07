@@ -70,11 +70,27 @@ export class AppServer {
     }
 
     private setupApiRoutes() {
-        this.app.get('/current', async (req, res) => {
+        this.app.get('/network-total', async (req, res) => {
             try {
-                const metrics = await this.systemMonitor.getMetrics();
-                const storageInfo = await this.systemMonitor.getStorageInfo();
-                const networkMetrics = this.systemMonitor.getNetworkMetrics()
+                const metrics = this.systemMonitor.getMetrics();
+                res.json({
+                    networkRxTotal: metrics?.io.networkRxTotal,
+                    networkTxTotal: metrics?.io.networkTxTotal,
+                    uptime: metrics?.uptime
+                });
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to fetch system metrics' });
+            }
+        });
+
+        this.app.get('/current', (req, res) => {
+            try {
+                const metrics = this.systemMonitor.getMetrics();
+                const storageInfo = this.systemMonitor.getStorageInfo();
+                const networkMetrics = JSON.parse(JSON.stringify(this.systemMonitor.getNetworkMetrics()))
+                if (req.query.secret != process.env.SECRET) {
+                    delete networkMetrics.ip_history;
+                }
                 res.json({
                     info: CONFIG.initInfo,
                     metrics,

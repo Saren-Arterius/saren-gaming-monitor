@@ -7,7 +7,7 @@ const WAKE_WORD_SPEECH_TIMEOUT = 7000;
 const HA_URL = 'https://' + location.host.replace('monitor-', 'ha-');
 const EXIT_MAGIC = 'XXEXITXX';
 const REFRESH_MAGIC = 'XXREFRESHXX';
-
+const NIGHT_H = 22;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const COLOR_STOPS = [
@@ -114,7 +114,7 @@ class Store {
     lastDataPushedAt = 0;
 
     lastUpdate = 0; // server's timestamp
-    uiPollingTimestamp = 0;
+    _uiPollingTimestamp = 0;
     voiceLastActiveAt = 0;
     lastPanelActive = Date.now();
     powerSaveAnimState = 1; // force opacity 
@@ -127,6 +127,68 @@ class Store {
     lastTTS = '';
     lastTTSAnimState = 0; // 1 = fading out, 2 = changing pos, 0 = fading in or stable;
     latestText = 0; // 0 = lastSTT, 1 = lastTTS
+
+    mainUI = null;
+    _lastInteract = Date.now();
+
+    set vaState(value) {
+        this._vaState = value;
+        this.lastInteract = Date.now(); // Update lastInteract when vaState changes
+    }
+
+    get vaState() {
+        return this._vaState;
+    }
+
+    set uiPollingTimestamp(value) {
+        this._uiPollingTimestamp = value;
+        this.updateBrightness();
+    }
+
+    get uiPollingTimestamp() {
+        return this._uiPollingTimestamp;
+    }
+
+    set lastInteract(value) {
+        this._lastInteract = value;
+        this.updateBrightness();
+    }
+
+    get lastInteract() {
+        return this._lastInteract;
+    }
+
+    get mainUIBrightness() {
+        console.log('get mainUIBrightness');
+        let mainUIBrightness = 1;
+        const now = new Date(this.uiPollingTimestamp);
+        const currentHour = now.getHours();
+        if (currentHour >= NIGHT_H || currentHour < 6) { // Only dim mainUI between 10 PM and 6 AM
+            const timeSinceLastInteract = (now.getTime() - this.lastInteract) / 1000; // in seconds
+            if (timeSinceLastInteract <= 30) {
+                mainUIBrightness = 1;
+            } else if (timeSinceLastInteract > 30 && timeSinceLastInteract <= 90) {
+                // Linearly interpolate from 1 to 0.3 as timeSinceLastInteract goes from 30 to 90 seconds
+                // (timeSinceLastInteract - 30) / (90 - 30) gives a value from 0 to 1
+                // 1 - (value * 0.7) means 1 when value is 0, and 0.3 when value is 1
+                mainUIBrightness = 1 - (((timeSinceLastInteract - 30) / 60) * 0.7);
+            } else {
+                mainUIBrightness = 0.3; // Stays at 0.3 after 90 seconds of inactivity
+            }
+            console.log({ timeSinceLastInteract, mainUIBrightness })
+        } else {
+            mainUIBrightness = 1; // Do not dim if current hour is not between 10 PM and 6 AM
+        }
+        return Math.max(0, Math.min(1, mainUIBrightness));
+    }
+
+    updateBrightness() {
+        if (!this.mainUI) return;
+        console.log('updateBrightness');
+        if (this.mainUI) {
+            this.mainUI.style.filter = `brightness(${this.mainUIBrightness})`;
+        }
+    }
 
     constructor() {
         makeAutoObservable(this);
@@ -251,9 +313,21 @@ const Gauge = ({ value, valueMB, valueGB, min = 0, max, label, className, feathe
         (gpuPwr ? `${store.pwr.gpu} W` : '') +
         (labelExtra || '');
     return (
-        <div className="gauge" style={{ width: gaugeSize, height: gaugeSize, cursor: clickFn ? 'pointer' : undefined }} onClick={() => {
-            clickFn && clickFn();
-        }}>
+        <div className="gauge"
+            style={{
+                width: gaugeSize,
+                height: gaugeSize,
+                cursor: clickFn ? 'pointer' : undefined,
+                transform: clickFn ? 'scale(1)' : undefined,
+                transition: clickFn ? 'transform 0.2s ease-in-out, filter 0.2s ease-in-out' : undefined
+            }}
+            onMouseEnter={window.matchMedia("(hover: hover) and (pointer: fine)").matches && clickFn ? (e) => { e.currentTarget.style.transform = 'scale(1.1)'; e.currentTarget.style.filter = 'brightness(1.2)'; } : undefined}
+            onMouseLeave={window.matchMedia("(hover: hover) and (pointer: fine)").matches && clickFn ? (e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.filter = 'brightness(1)'; } : undefined}
+            onTouchStart={clickFn ? (e) => { e.currentTarget.style.transform = 'scale(1.1)'; e.currentTarget.style.filter = 'brightness(1.2)'; } : undefined}
+            onTouchEnd={clickFn ? (e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.filter = 'brightness(1)'; } : undefined}
+            onClick={() => {
+                clickFn && clickFn();
+            }}>
             <div className="gauge-body">
                 <div>
                     <div className="gauge-fill"></div>
@@ -573,19 +647,31 @@ const Monitor = observer(() => {
                     </div>
                 </div>
                 {store.networkMetrics?.ping_statistics?.minute_history && (
-                    <div style={{ width: '100%', paddingTop: isSmallPortrait ? 8 : 16, paddingBottom: 16, cursor: 'pointer' }} onClick={() => {
-                        const formatShort = (date) => {
-                            return new Intl.DateTimeFormat('en-US', {
-                                month: 'long',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                second: '2-digit',
-                                hour12: false
-                            }).format(date).replace(/, (\d+):/, ', $1:');
-                        };
+                    <div style={{
+                        width: '100%',
+                        paddingTop: isSmallPortrait ? 8 : 16,
+                        paddingBottom: 16,
+                        cursor: 'pointer',
+                        transform: 'scale(1)',
+                        transition: 'transform 0.2s ease-in-out, filter 0.2s ease-in-out'
+                    }}
+                        onMouseEnter={window.matchMedia("(hover: hover) and (pointer: fine)").matches ? (e) => { e.currentTarget.style.transform = 'scale(1.02)'; e.currentTarget.style.filter = 'brightness(1.5)'; } : undefined}
+                        onMouseLeave={window.matchMedia("(hover: hover) and (pointer: fine)").matches ? (e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.filter = 'brightness(1)'; } : undefined}
+                        onTouchStart={(e) => { e.currentTarget.style.transform = 'scale(1.02)'; e.currentTarget.style.filter = 'brightness(1.5)'; }}
+                        onTouchEnd={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.filter = 'brightness(1)'; }}
+                        onClick={() => {
+                            const formatShort = (date) => {
+                                return new Intl.DateTimeFormat('en-US', {
+                                    month: 'long',
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    second: '2-digit',
+                                    hour12: false
+                                }).format(date).replace(/, (\d+):/, ', $1:');
+                            };
 
-                        let message = `Active Connections: ${store.io.activeConn}
+                            let message = `Active Connections: ${store.io.activeConn}
 
 Open Ports: ${store.networkMetrics.internet_ports.map(s => s.replace(/open/g, '').trim())?.join(', ') || 'None'}
 
@@ -598,23 +684,23 @@ Current: ${store.networkMetrics.ping_statistics.latency.latest}ms
 
 Packet loss:
 Current: ${store.networkMetrics.ping_statistics.packet_loss.latest_percent}%
-1 Minute: ${store.networkMetrics.ping_statistics.packet_loss.last1m_percent}%
-5 Minutes: ${store.networkMetrics.ping_statistics.packet_loss.last5m_percent}%
-1 Hour: ${store.networkMetrics.ping_statistics.packet_loss.last1h_percent}%
-24 Hours: ${store.networkMetrics.ping_statistics.packet_loss.last24h_percent}%
+1 Minute: ${store.networkMetrics.ping_statistics.packet_loss.last1m}%
+5 Minutes: ${store.networkMetrics.ping_statistics.packet_loss.last5m}%
+1 Hour: ${store.networkMetrics.ping_statistics.packet_loss.last1h}%
+24 Hours: ${store.networkMetrics.ping_statistics.packet_loss.last24h}%
 
 Recent outages:
 ${store.networkMetrics.ping_statistics.outages.reverse().map(o => {
-                            const start = formatShort(new Date(o.start));
-                            const end = formatShort(new Date(o.end));
-                            const mins = Math.floor(o.duration_seconds / 60);
-                            const secs = o.duration_seconds % 60;
-                            return `${start} – ${end} (${mins}m${secs}s)`;
-                        }).join('\n') || 'None in last 24 hours'}
+                                const start = formatShort(new Date(o.start));
+                                const end = formatShort(new Date(o.end));
+                                const mins = Math.floor(o.duration_seconds / 60);
+                                const secs = o.duration_seconds % 60;
+                                return `${start} – ${end} (${mins}m${secs}s)`;
+                            }).join('\n') || 'None in last 24 hours'}
 
 Last updated: ${formatTimeDiff(store.networkMetrics?.last_updated)}`;
-                        panelAlert(message, 'Network Info');
-                    }}>
+                            panelAlert(message, 'Network Info');
+                        }}>
                         <div style={{
                             display: 'flex',
                             flexGrow: isSmallPortrait ? 1 : undefined,
@@ -633,12 +719,12 @@ Last updated: ${formatTimeDiff(store.networkMetrics?.last_updated)}`;
                                             marginRight: '0.05em',
                                             height: 20,
                                             opacity: 1 - ((arr.length - (i + 1)) * 0.015),
-                                            backgroundColor: h.latency_ms === null
+                                            backgroundColor: h.latency_ms === null || h.latency_ms === -1
                                                 ? '#444444'
                                                 : getColorAtPercent(Math.min(100, Math.max((h.latency_ms ** 2) / 10, h.packet_loss_percent))),
                                             position: 'relative'
                                         }}
-                                        title={`Time: ${formattedTime}\nLatency: ${h.latency_ms !== null ? h.latency_ms + 'ms' : 'N/A'}\nPacket Loss: ${h.packet_loss_percent !== null ? h.packet_loss_percent + '%' : 'N/A'}`}
+                                        title={`Time: ${formattedTime}\nLatency: ${h.latency_ms !== null && h.latency_ms !== -1 ? h.latency_ms + 'ms' : 'N/A'}\nPacket Loss: ${h.packet_loss_percent !== null && h.packet_loss_percent !== -1 ? h.packet_loss_percent + '%' : 'N/A'}`}
                                     >
 
                                     </div>
@@ -664,13 +750,13 @@ Last updated: ${formatTimeDiff(store.networkMetrics?.last_updated)}`;
                                     marginRight: -2,
                                     color: getColorAtPercent(Math.min(100, Math.max(
                                         ((store.networkMetrics?.ping_statistics?.latency.last1m || store.networkMetrics.ping_statistics.latency.latest) ** 2) / 10,
-                                        store.networkMetrics?.ping_statistics?.packet_loss.last1m_percent)
+                                        store.networkMetrics?.ping_statistics?.packet_loss.last1m)
                                     ))
                                 }} >
                                     {Date.now() - store.networkMetrics?.last_updated > 7000 && <>{formatTimeDiff(store.networkMetrics?.last_updated)} •&nbsp;</>}
                                     {store.io.activeConn} conns •&nbsp;
                                     {store.networkMetrics?.ping_statistics?.latency.last1m?.toFixed(1) || store.networkMetrics.ping_statistics.latency.latest?.toFixed(1)}ms •&nbsp;
-                                    {store.networkMetrics?.ping_statistics?.packet_loss.last1m_percent?.toFixed(1)}% loss
+                                    {store.networkMetrics?.ping_statistics?.packet_loss.last1m?.toFixed(1)}% loss
                                 </div>
 
                             </div>
@@ -699,7 +785,7 @@ Last updated: ${formatTimeDiff(store.networkMetrics?.last_updated)}`;
                         store.alertExpire = 0;
                     }}>
                     <div className="container" style={{
-                        backgroundColor: '#232323a0',
+                        backgroundColor: 'rgba(0,0,0,0.9)',
                         paddingTop: 20,
                         paddingRight: 20,
                         paddingLeft: 20,
@@ -1682,8 +1768,18 @@ setInterval(() => {
         store.uiPollingTimestamp = now;
         console.log('store.uiPollingTimestamp = now', 'setInterval');
     }
+    if (!store.mainUI) {
+        store.mainUI = document.querySelector("html");
+    }
 }, 1000);
 
 document.querySelector("body").addEventListener('click', (e) => {
     document.querySelector("body").requestFullscreen();
+    store.lastInteract = Date.now();
 });
+
+document.querySelector("body").addEventListener('touchstart', (e) => {
+    store.lastInteract = Date.now();
+});
+
+
