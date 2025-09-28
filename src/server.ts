@@ -52,16 +52,22 @@ export class AppServer {
             console.log(metrics);
             console.log(networkMetrics);
             console.log(JSON.stringify(storageInfo, null, 2));
+            while (true) {
+                try {
+                    await this.systemMonitor.updateNetworkMetrics();
+                    this.io.emit('networkMetrics', { networkMetrics: this.systemMonitor.getNetworkMetricsPartial() });
+                } catch (e) {
+                    console.error(e);
+                }
+                await new Promise(resolve => setTimeout(resolve, 2500));
+            }
         })();
 
         setInterval(async () => {
             const metrics = await this.systemMonitor.updateMetrics();
             this.io.emit('metrics', metrics);
         }, 1000);
-        setInterval(async () => {
-            await this.systemMonitor.updateNetworkMetrics();
-            this.io.emit('networkMetrics', { networkMetrics: this.systemMonitor.getNetworkMetricsPartial() });
-        }, 5000);
+
         setInterval(async () => {
             const storageInfo = await this.systemMonitor.updateStorageInfo();
             console.log(storageInfo);

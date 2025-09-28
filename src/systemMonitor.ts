@@ -18,6 +18,10 @@ export class SystemMonitor {
     private lastStats: LastStats | null = null;
     private metrics: SystemMetrics | null = null;
     private networkMetrics: NetworkMetrics | null = null;
+    private saneInfo = {
+        networkRxTotal: 0,
+        networkTxTotal: 0
+    }
 
     private storageInfo = {
         storage: {
@@ -64,9 +68,11 @@ export class SystemMonitor {
         if (!this.networkMetrics) {
             return null;
         }
+
         return {
             internet_ports: this.networkMetrics.internet_ports,
             ping_statistics: this.networkMetrics.ping_statistics,
+            network_traffic: this.networkMetrics.network_traffic,
             last_updated: this.networkMetrics.last_updated
         };
     }
@@ -77,6 +83,7 @@ export class SystemMonitor {
             'df -ml / | tail -n 1',
             'df -ml /mnt/storage | tail -n 1',
             "ss -tuna state established | grep -v '127.0.0.1' | grep -v '::1' | wc -l",
+            "ip route | grep metric | grep default"
         ];
 
         const [{ stdout: sensors }, ...data] = await Promise.all([
@@ -90,13 +97,14 @@ export class SystemMonitor {
             ssdStats: data[0].stdout.split(' '),
             ssd2Stats: data[1].stdout.split(' '),
             activeConn: data[2].stdout.trim(),
-            stat: data[3].split('\n'),
-            meminfo: data[4].split('\n'),
-            diskstats: data[5].split('\n'),
-            netdev: data[6].split('\n').map(l => l.trim()),
-            cpuinfo: data[7].split('\n'),
-            uptime: data[8].trim(),
-            loadavg: data[9].trim()
+            ipRoute: data[3].stdout.trim(),
+            stat: data[commands.length + 0].split('\n'),
+            meminfo: data[commands.length + 1].split('\n'),
+            diskstats: data[commands.length + 2].split('\n'),
+            netdev: data[commands.length + 3].split('\n').map(l => l.trim()),
+            cpuinfo: data[commands.length + 4].split('\n'),
+            uptime: data[commands.length + 5].trim(),
+            loadavg: data[commands.length + 6].trim()
         };
     }
 
@@ -165,7 +173,14 @@ export class SystemMonitor {
                 networkPacketsTx: 0,
                 networkRxTotal: 0,
                 networkTxTotal: 0,
-                activeConn: parseInt(data.activeConn)
+                activeConn: parseInt(data.activeConn),
+
+                backupNetworkPacketsRx: 0,
+                backupNetworkPacketsTx: 0,
+                backupNetworkRx: 0,
+                backupNetworkTx: 0,
+                isUsingBackup: false,
+                routeMetrics: {},
             },
             fanSpeed: {
                 cpu: parseInt(data.sensors[CONFIG.sensors.fans.controller][CONFIG.sensors.fans.cpu.id][CONFIG.sensors.fans.cpu.input]),
@@ -212,6 +227,22 @@ export class SystemMonitor {
             result.io.diskWrite = Math.round(writeBytesStorage + writeBytesSystem);
 
             const networkStats = data.netdev.find(line => line.startsWith(`${CONFIG.network.interface}:`));
+            
+            const routeMetrics: { [key: string]: number } = {};
+            data.ipRoute.split('\n').reverse().forEach(line => {
+                const match = line.match(/dev\s+(\S+).*metric\s+(\d+)/);
+                if (match) {
+                    routeMetrics[match[1]] = parseInt(match[2]);
+                }
+            });
+            // console.log({routeMetrics});
+
+            // const isUsingBackup = (!routeMetrics[CONFIG.network.interface] && !!routeMetrics[CONFIG.network.backupInterface]) || 
+            //     routeMetrics[CONFIG.network.backupInterface] < routeMetrics[CONFIG.network.interface];
+            const isUsingBackup = routeMetrics[CONFIG.network.backupInterface] < 1000;
+            result.io.isUsingBackup = isUsingBackup;
+            result.io.routeMetrics = routeMetrics;
+
             const prevNetworkStats = this.lastStats.netdev.find(line => line.startsWith(`${CONFIG.network.interface}:`));
 
             if (networkStats && prevNetworkStats) {
@@ -224,8 +255,30 @@ export class SystemMonitor {
                 result.io.networkPacketsRx = Math.round((parseInt(rxPackets) - parseInt(prevRxPackets)) / timeDiff);
                 result.io.networkPacketsTx = Math.round((parseInt(txPackets) - parseInt(prevTxPackets)) / timeDiff);
 
-                result.io.networkRxTotal = rxBytes;
-                result.io.networkTxTotal = txBytes;
+
+                // Prevent interface restart surprises 
+                if (parseInt(rxBytes) > parseInt(this.saneInfo.networkRxTotal)) {
+                    this.saneInfo.networkRxTotal = rxBytes;
+                }
+                if (parseInt(txBytes) > parseInt(this.saneInfo.networkTxTotal)) {
+                    this.saneInfo.networkTxTotal = txBytes;
+                }
+                result.io.networkRxTotal = this.saneInfo.networkRxTotal;
+                result.io.networkTxTotal = this.saneInfo.networkTxTotal;
+                // console.log(result.io, this.saneInfo);
+            }
+
+            const backupNetworkStats = data.netdev.find(line => line.startsWith(`${CONFIG.network.backupInterface}:`));
+            const backupPrevNetworkStats = this.lastStats.netdev.find(line => line.startsWith(`${CONFIG.network.backupInterface}:`));
+            if (backupNetworkStats && backupPrevNetworkStats) {
+                const [, rxBytes, rxPackets, , , , , , , txBytes, txPackets] = backupNetworkStats.split(/\s+/);
+                const [, prevRxBytes, prevRxPackets, , , , , , , prevTxBytes, prevTxPackets] = backupPrevNetworkStats.split(/\s+/);
+
+                result.io.backupNetworkRx = Math.round((parseInt(rxBytes) - parseInt(prevRxBytes)) / timeDiff);
+                result.io.backupNetworkTx = Math.round((parseInt(txBytes) - parseInt(prevTxBytes)) / timeDiff);
+
+                result.io.backupNetworkPacketsRx = Math.round((parseInt(rxPackets) - parseInt(prevRxPackets)) / timeDiff);
+                result.io.backupNetworkPacketsTx = Math.round((parseInt(txPackets) - parseInt(prevTxPackets)) / timeDiff);
             }
         }
 
