@@ -2,12 +2,13 @@ import { readFile } from 'fs/promises';
 import { exec } from 'child_process';
 import util from 'node:util';
 import { CONFIG } from './config';
-import { LastStats, SystemMetrics } from './types';
+import { LastStats, SystemMetrics, NetworkMetrics } from './types';
 
 const execAsync = util.promisify(exec);
 
 const STORAGE_HEALTH_RESULTS_TEMPLATE = {
     status: 0, // 0 = normal, 1 = warning, 2 = critical
+    statusText: 'Normal',
     issues: [],
     metrics: {
         smart: {},
@@ -17,38 +18,113 @@ const STORAGE_HEALTH_RESULTS_TEMPLATE = {
 export class SystemMonitor {
     private lastStats: LastStats | null = null;
     private metrics: SystemMetrics | null = null;
+    private networkMetrics: NetworkMetrics | null = null;
+    private saneInfo = {
+        networkRxTotal: 0,
+        networkTxTotal: 0
+    }
 
     private storageInfo = {
         system: {
             paths: ['/dev/nvme0', '/'],
             lastUpdate: 0,
-            info: STORAGE_HEALTH_RESULTS_TEMPLATE,
+            info: JSON.parse(JSON.stringify(STORAGE_HEALTH_RESULTS_TEMPLATE)),
         },
     };
 
-    async collectData() {
+    async updateMetrics() {
         try {
-            const nvidiaCmdStr = `${CONFIG.commands.nvidia.command} ${CONFIG.commands.nvidia.params} ${CONFIG.commands.nvidia.format}`;
-            const files = CONFIG.systemFiles;
+            const data = await this.collectData();
+            this.metrics = this.transformSystemInfo(data);
+        } catch (error) {
+            console.error('Error updating system metrics:', error);
+        }
+        return this.metrics;
+    }
 
-            const [{ stdout: gpu }, { stdout: sensors }, ...fileData] = await Promise.all([
-                execAsync(nvidiaCmdStr),
-                execAsync(CONFIG.commands.sensors.command),
-                ...Object.values(files).map(f => readFile(f).then(b => b.toString()))
-            ]);
+    getMetrics() {
+        return this.metrics;
+    }
+
+    async updateNetworkMetrics() {
+        try {
+            const response = await fetch(CONFIG.networkStatusAPI);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            this.networkMetrics = await response.json() as NetworkMetrics;
+        } catch (error) {
+            console.error('Failed to fetch network metrics:', error);
+            // this.networkMetrics = null;
+        }
+        return this.networkMetrics;
+    }
+
+    getNetworkMetrics() {
+        return this.networkMetrics;
+    }
+
+    getNetworkMetricsPartial() {
+        if (!this.networkMetrics) {
+            return null;
+        }
+
+        return {
+            internet_ports: this.networkMetrics.internet_ports,
+            ping_statistics: this.networkMetrics.ping_statistics,
+            network_traffic: this.networkMetrics.network_traffic,
+            last_updated: this.networkMetrics.last_updated
+        };
+    }
+
+    async collectData() {
+        const files = CONFIG.systemFiles;
+        const commands = [
+            execAsync(`${CONFIG.commands.nvidia.command} ${CONFIG.commands.nvidia.params} ${CONFIG.commands.nvidia.format}`),
+            execAsync(CONFIG.commands.sensors.command),
+            execAsync('df -ml / | tail -n 1'),
+            execAsync('df -ml /mnt/storage | tail -n 1'),
+            execAsync("ss -tuna state established | grep -v '127.0.0.1' | grep -v '::1' | wc -l"),
+            execAsync("ip route | grep metric | grep default")
+        ];
+        const filePromises = Object.values(files).map(f => readFile(f, 'utf8'));
+
+        try {
+            const results = await Promise.all([...commands, ...filePromises]);
+            const [
+                { stdout: gpu },
+                { stdout: sensors },
+                { stdout: ssdStats },
+                { stdout: ssd2Stats },
+                { stdout: activeConn },
+                { stdout: ipRoute },
+                stat,
+                meminfo,
+                diskstats,
+                netdev,
+                cpuinfo,
+                ib_rcv,
+                ib_xmit,
+                uptime,
+                loadavg
+            ] = results;
 
             return {
                 gpu: gpu.split(',').map(str => str.trim()),
                 sensors: JSON.parse(sensors),
-                stat: fileData[0].split('\n'),
-                meminfo: fileData[1].split('\n'),
-                diskstats: fileData[2].split('\n'),
-                netdev: fileData[3].split('\n'),
-                cpuinfo: fileData[4].split('\n'),
-                ib_rcv: fileData[5].trim(),
-                ib_xmit: fileData[6].trim(),
-                uptime: fileData[7].trim(),
-                loadavg: fileData[8].trim()
+                ssdStats: ssdStats.split(' ').filter(Boolean),
+                ssd2Stats: ssd2Stats.split(' ').filter(Boolean),
+                activeConn: activeConn.trim(),
+                ipRoute: ipRoute.trim(),
+                stat: stat.split('\n'),
+                meminfo: meminfo.split('\n'),
+                diskstats: diskstats.split('\n'),
+                netdev: netdev.split('\n').map(l => l.trim()),
+                cpuinfo: cpuinfo.split('\n'),
+                ib_rcv: ib_rcv.trim(),
+                ib_xmit: ib_xmit.trim(),
+                uptime: uptime.trim(),
+                loadavg: loadavg.trim()
             };
         } catch (error) {
             console.error('Error collecting system data:', error);
@@ -56,7 +132,7 @@ export class SystemMonitor {
         }
     }
 
-    formatUptime(seconds) {
+    formatUptime(seconds: number) {
         const days = Math.floor(seconds / 86400);
         const hours = Math.floor((seconds % 86400) / 3600);
         const minutes = Math.floor((seconds % 3600) / 60);
@@ -64,30 +140,26 @@ export class SystemMonitor {
         return `${days}d ${hours}h ${minutes}m`;
     }
 
-
-    transformSystemInfo(data) {
+    transformSystemInfo(data: any) {
         const now = Date.now();
 
-        // console.log(data.ssdStats)
-        let total = data.meminfo.find(line => line.startsWith('MemTotal:')).split(/\s+/)[1] / 1024;
-        let avail = data.meminfo.find(line => line.startsWith('MemAvailable:')).split(/\s+/)[1] / 1024;
+        let total = parseInt(data.meminfo.find((line: string) => line.startsWith('MemTotal:')).split(/\s+/)[1]) / 1024;
+        let avail = parseInt(data.meminfo.find((line: string) => line.startsWith('MemAvailable:')).split(/\s+/)[1]) / 1024;
         let memUsed = total - avail;
         let memUsage = memUsed / total;
 
-        let cpuMhzs = data.cpuinfo.filter(l => l.startsWith('cpu MHz')).map(s => parseFloat(s.split(':')[1]));
+        let cpuMhzs = data.cpuinfo.filter((l: string) => l.startsWith('cpu MHz')).map((s: string) => parseFloat(s.split(':')[1]));
 
         const formattedUptime = this.formatUptime(parseFloat(data.uptime));
-        // Read load averages
         const loadavg = data.loadavg
             .split(' ')
             .slice(0, 3)
-            .map(num => parseFloat(num).toFixed(2))
+            .map((num: string) => parseFloat(num).toFixed(2))
             .join(' ');
 
-        // Combine the information in required format
         let system = `${formattedUptime} | ${loadavg}`;
 
-        const result = {
+        const result: SystemMetrics = {
             temperatures: {
                 cpu: Math.round(parseFloat(data.sensors[CONFIG.sensors.cpu.temperature][CONFIG.sensors.cpu.tempField][CONFIG.sensors.cpu.tempInput])),
                 gpu: parseFloat(data.gpu[1]),
@@ -112,7 +184,13 @@ export class SystemMonitor {
                 networkPacketsTx: 0,
                 networkRxTotal: 0,
                 networkTxTotal: 0,
-                activeConn: parseInt(data.activeConn)
+                activeConn: parseInt(data.activeConn),
+                backupNetworkPacketsRx: 0,
+                backupNetworkPacketsTx: 0,
+                backupNetworkRx: 0,
+                backupNetworkTx: 0,
+                isUsingBackup: false,
+                routeMetrics: {},
             },
             fanSpeed: {
                 cpu: parseInt(data.sensors[CONFIG.sensors.fans.controller][CONFIG.sensors.fans.cpu.id][CONFIG.sensors.fans.cpu.input]),
@@ -131,6 +209,8 @@ export class SystemMonitor {
         };
 
         if (this.lastStats) {
+            const timeDiff = (now - this.lastStats.lastUpdate) / 1000;
+
             const prevCpu = this.lastStats.stat[0].split(' ').slice(1).filter(x => x).map(Number);
             const currentCpu = data.stat[0].split(' ').slice(1).filter(x => x).map(Number);
 
@@ -147,7 +227,6 @@ export class SystemMonitor {
 
             const prevDisk = this.lastStats.diskstats[0].split(' ').filter(x => x);
             const currentDisk = data.diskstats[0].split(' ').filter(x => x);
-            const timeDiff = (now - this.lastStats.lastUpdate) / 1000;
 
             const readBytes = (parseInt(currentDisk[5]) - parseInt(prevDisk[5])) * 512 / timeDiff;
             const writeBytes = (parseInt(currentDisk[9]) - parseInt(prevDisk[9])) * 512 / timeDiff;
@@ -155,12 +234,24 @@ export class SystemMonitor {
             result.io.diskRead = Math.round(readBytes);
             result.io.diskWrite = Math.round(writeBytes);
 
-            const networkStats = data.netdev.find(line => line.startsWith(`${CONFIG.network.interface}:`));
-            const prevNetworkStats = this.lastStats.netdev.find(line => line.startsWith(`${CONFIG.network.interface}:`));
+            const networkStats = data.netdev.find((line: string) => line.startsWith(`${CONFIG.network.interface}:`));
+            const prevNetworkStats = this.lastStats.netdev.find((line: string) => line.startsWith(`${CONFIG.network.interface}:`));
+
+            const routeMetrics: { [key: string]: number } = {};
+            data.ipRoute.split('\n').reverse().forEach((line: string) => {
+                const match = line.match(/dev\s+(\S+).*metric\s+(\d+)/);
+                if (match) {
+                    routeMetrics[match[1]] = parseInt(match[2]);
+                }
+            });
+
+            const isUsingBackup = routeMetrics[CONFIG.network.backupInterface] < 1000;
+            result.io.isUsingBackup = isUsingBackup;
+            result.io.routeMetrics = routeMetrics;
 
             if (networkStats && prevNetworkStats) {
-                const [, rxBytes, , , , , , , , txBytes] = networkStats.split(/\s+/);
-                const [, prevRxBytes, , , , , , , , prevTxBytes] = prevNetworkStats.split(/\s+/);
+                const [, rxBytes, rxPackets, , , , , , , txBytes, txPackets] = networkStats.split(/\s+/);
+                const [, prevRxBytes, prevRxPackets, , , , , , , prevTxBytes, prevTxPackets] = prevNetworkStats.split(/\s+/);
 
                 let ibRx = Math.round(((parseInt(data.ib_rcv) * 4) - (parseInt(this.lastStats.ib_rcv) * 4)) / timeDiff);
                 let ibTx = Math.round(((parseInt(data.ib_xmit) * 4) - (parseInt(this.lastStats.ib_xmit) * 4)) / timeDiff);
@@ -168,14 +259,32 @@ export class SystemMonitor {
                 result.io.networkRx = Math.round((parseInt(rxBytes) - parseInt(prevRxBytes)) / timeDiff) + ibRx;
                 result.io.networkTx = Math.round((parseInt(txBytes) - parseInt(prevTxBytes)) / timeDiff) + ibTx;
 
-                result.io.networkRx = Math.round((parseInt(rxBytes) - parseInt(prevRxBytes)) / timeDiff);
-                result.io.networkTx = Math.round((parseInt(txBytes) - parseInt(prevTxBytes)) / timeDiff);
-
                 result.io.networkPacketsRx = Math.round((parseInt(rxPackets) - parseInt(prevRxPackets)) / timeDiff);
                 result.io.networkPacketsTx = Math.round((parseInt(txPackets) - parseInt(prevTxPackets)) / timeDiff);
 
-                result.io.networkRxTotal = rxBytes;
-                result.io.networkTxTotal = txBytes;
+
+                // Prevent interface restart surprises
+                if (parseInt(rxBytes) > this.saneInfo.networkRxTotal) {
+                    this.saneInfo.networkRxTotal = parseInt(rxBytes);
+                }
+                if (parseInt(txBytes) > this.saneInfo.networkTxTotal) {
+                    this.saneInfo.networkTxTotal = parseInt(txBytes);
+                }
+                result.io.networkRxTotal = this.saneInfo.networkRxTotal;
+                result.io.networkTxTotal = this.saneInfo.networkTxTotal;
+            }
+
+            const backupNetworkStats = data.netdev.find((line: string) => line.startsWith(`${CONFIG.network.backupInterface}:`));
+            const backupPrevNetworkStats = this.lastStats.netdev.find((line: string) => line.startsWith(`${CONFIG.network.backupInterface}:`));
+            if (backupNetworkStats && backupPrevNetworkStats) {
+                const [, rxBytes, rxPackets, , , , , , txBytes, txPackets] = backupNetworkStats.split(/\s+/);
+                const [, prevRxBytes, prevRxPackets, , , , , , prevTxBytes, prevTxPackets] = backupPrevNetworkStats.split(/\s+/);
+
+                result.io.backupNetworkRx = Math.round((parseInt(rxBytes) - parseInt(prevRxBytes)) / timeDiff);
+                result.io.backupNetworkTx = Math.round((parseInt(txBytes) - parseInt(prevTxBytes)) / timeDiff);
+
+                result.io.backupNetworkPacketsRx = Math.round((parseInt(rxPackets) - parseInt(prevRxPackets)) / timeDiff);
+                result.io.backupNetworkPacketsTx = Math.round((parseInt(txPackets) - parseInt(prevTxPackets)) / timeDiff);
             }
         }
 
@@ -187,30 +296,14 @@ export class SystemMonitor {
             ib_xmit: data.ib_xmit,
             lastUpdate: now
         };
-
         return result;
     }
 
-    async updateMetrics() {
-        try {
-            const data = await this.collectData();
-            this.metrics = this.transformSystemInfo(data);
-        } catch (error) {
-            console.error('Error updating system metrics:', error);
-        }
-        return this.metrics;
-    }
-
-    getMetrics() {
-        return this.metrics;
-    }
-
-
-    analyzeStorageHealth(smartData, btrfsData) {
+    analyzeStorageHealth(smartData: any, btrfsData: any) {
 
         let results = JSON.parse(JSON.stringify(STORAGE_HEALTH_RESULTS_TEMPLATE));
         // Helper function to add issues
-        const addIssue = (message, level) => {
+        const addIssue = (message: string, level: number) => {
             results.issues.push(message);
             results.status = Math.max(results.status, level);
         };
@@ -247,7 +340,6 @@ export class SystemMonitor {
         }
 
         // Media Errors
-        // health.media_errors = 1; // troll
         results.metrics.smart.mediaErrors = {
             count: health.media_errors,
             formatted: `${health.media_errors} media errors`
@@ -312,15 +404,15 @@ export class SystemMonitor {
     }
 
 
-    async collectStorageInfo(section) {
-        let paths = this.storageInfo[section].paths;
+    async collectStorageInfo(section: string) {
+        let paths = this.storageInfo[section as keyof typeof this.storageInfo].paths;
         const [
             { stdout: smart },
             { stdout: btrfsStats },
         ] = await Promise.all([
             execAsync(`sudo smartctl ${paths[0]} -aj`),
             execAsync(`sudo btrfs --format=json device stats ${paths[1]}`)
-        ])
+        ]);
         return this.analyzeStorageHealth(JSON.parse(smart), JSON.parse(btrfsStats));
     }
 

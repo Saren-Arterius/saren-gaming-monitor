@@ -20,7 +20,9 @@ export const CONFIG = {
                 diskRead: { max: 3.75 * 1024 * 1024 * 1024 }, // PCIE 3.0 NVME SSD
                 diskWrite: { max: 3.75 * 1024 * 1024 * 1024 },
                 networkRx: { max: 3 * 1024 * 1024 * 1024 }, // 40Gbps Network - overhead
-                networkTx: { max: 3 * 1024 * 1024 * 1024 }
+                networkTx: { max: 3 * 1024 * 1024 * 1024 },
+                backupNetworkRx: { max: 6 * 1024 * 1024 }, // 42Mbps Network
+                backupNetworkTx: { max: 1 * 1024 * 1024 }
             },
             fanSpeed: {
                 cpu: { max: 2500 },
@@ -55,7 +57,8 @@ export const CONFIG = {
         }
     },
     network: {
-        interface: 'enp5s0np0'
+        interface: 'enp5s0np0',
+        backupInterface: 'enp0s20f0u4',
     },
     server: {
         port: 3000,

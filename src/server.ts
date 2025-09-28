@@ -20,6 +20,7 @@ export class AppServer {
         this.setupExpress();
         this.setupSocketIO();
         this.setupMonitoring();
+        this.setupApiRoutes();
     }
 
     private setupExpress() {
@@ -48,7 +49,16 @@ export class AppServer {
             const storageInfo = await this.systemMonitor.updateStorageInfo();
             console.log(metrics);
             console.log(JSON.stringify(storageInfo, null, 2));
-        })()
+            while (true) {
+                try {
+                    await this.systemMonitor.updateNetworkMetrics();
+                    this.io.emit('networkMetrics', { networkMetrics: this.systemMonitor.getNetworkMetricsPartial() });
+                } catch (e) {
+                    console.error(e);
+                }
+                await new Promise(resolve => setTimeout(resolve, 2500));
+            }
+        })();
 
         setInterval(async () => {
             const metrics = await this.systemMonitor.updateMetrics();

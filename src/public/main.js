@@ -58,7 +58,9 @@ class Store {
             diskRead: { max: 3.75 * 1024 * 1024 * 1024 },
             diskWrite: { max: 3.75 * 1024 * 1024 * 1024 },
             networkRx: { max: 1.25 * 1024 * 1024 * 1024 },
-            networkTx: { max: 1.25 * 1024 * 1024 * 1024 }
+            networkTx: { max: 1.25 * 1024 * 1024 * 1024 },
+            backupNetworkRx: { max: 6 * 1024 * 1024 }, // 42Mbps Network
+            backupNetworkTx: { max: 1 * 1024 * 1024 }
         },
         fanSpeed: {
             cpu: { max: 2200 },
@@ -94,6 +96,19 @@ class Store {
         diskWrite: 10000,
         networkRx: 1000054300,
         networkTx: 1000054300,
+        networkPacketsRx: 0,
+        networkPacketsTx: 0,
+
+        networkRxTotal: 0,
+        networkTxTotal: 0,
+        activeConn: 0,
+
+        backupNetworkPacketsRx: 0,
+        backupNetworkPacketsTx: 0,
+        backupNetworkRx: 0,
+        backupNetworkTx: 0,
+        isUsingBackup: false,
+        routeMetrics: {},
     };
     fanSpeed = {
         cpu: 1500,
@@ -236,22 +251,21 @@ function rgbToHex(r, g, b) {
     }).join('');
 }
 
-function formatBytes(bytes, decimals = 1, name = 'B') {
+function formatBytes(bytes, decimals = 1, name = 'B', space = true) {
     if (bytes === 0) return `0 ${name}`;
 
-    if (bytes >= 1024 * 1024) {
-        // Convert to MB
-        let mb = bytes / (1024 * 1024);
-        if (mb >= 1000) {
-            return `${(bytes / (1024 * 1024)).toFixed(0)} M${name}`;
-        }
-        return `${(bytes / (1024 * 1024)).toFixed(decimals)} M${name}`;
-    } else if (bytes >= 1024) {
-        // Convert to KB
-        return `${(bytes / 1024).toFixed(decimals)} k${name}`;
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['', 'k', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y'];
+
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    const formattedValue = parseFloat((bytes / Math.pow(k, i)).toFixed(dm));
+    const unit = sizes[i];
+
+    if (space) {
+        return `${formattedValue} ${unit}${name}`;
     } else {
-        // Leave as Bytes
-        return `${bytes} ${name}`;
+        return `${formattedValue}${unit}${name}`;
     }
 }
 
@@ -392,7 +406,7 @@ const Monitor = observer(() => {
     let infoWidth = 220;
     let infoMT = undefined;
     let isSmallScreen = store.windowWidth < SMALL_WIDTH || store.windowHeight < SMALL_HEIGHT;
-    let isSmallPortrait = isSmallScreen && store.windowWidth > store.windowHeight;
+    let isSmallLandscape = isSmallScreen && store.windowWidth > store.windowHeight;
     if (isSmallScreen) {
         sectionMinHeight = 170;
         infoFontSize = '70%';
@@ -401,7 +415,6 @@ const Monitor = observer(() => {
     }
 
     console.log('render');
-
     let fsMessage = (() => {
         if (store.lastUpdate === 0) return (
             <>
@@ -500,6 +513,9 @@ const Monitor = observer(() => {
         }
     })();
 
+    const isUsingBackupNetwork = store.io.isUsingBackup;
+    const isSmallPortrait = false;
+
     return (
         <>
             <div className="container" style={{ display: isSmallPortrait ? 'flex' : undefined, flexWrap: isSmallPortrait ? 'wrap' : undefined, maxWidth: isSmallPortrait ? '100vw' : undefined }}>
@@ -537,9 +553,9 @@ const Monitor = observer(() => {
                         />
                     </div>
                 </div>
-                <div className="section" style={{ minHeight: sectionMinHeight, width: isSmallPortrait ? 'calc(50% - 40px)' : undefined }}>
+                <div className="section" style={{ minHeight: sectionMinHeight, width: isSmallLandscape ? 'calc(50% - 40px)' : undefined }}>
                     <div className="section-title">Usage</div>
-                    <div className="gauge-container" style={{ marginTop: isSmallPortrait ? 25 : undefined }}>
+                    <div className="gauge-container" style={{ marginTop: isSmallLandscape ? 25 : undefined }}>
                         <Gauge value={store.usage.cpu} max={100} label="CPU" className="usage" featherName="cpu" small cpuFreq />
                         <Gauge value={store.usage.gpu} max={100} label="GPU" className="usage" featherName="image" small gpuFreq />
                         <Gauge value={store.usage.ram} valueMB={store.usageMB.ram} max={100} label="RAM" className="usage" featherName="server" small />
@@ -548,13 +564,13 @@ const Monitor = observer(() => {
                 </div>
                 <div className="section" style={{
                     minHeight: sectionMinHeight,
-                    width: isSmallPortrait ? 'calc(50% - 40px)' : undefined,
-                    marginRight: isSmallPortrait ? 40 : undefined,
-                    marginTop: isSmallPortrait ? 10 : undefined
+                    width: isSmallLandscape ? 'calc(50% - 40px)' : undefined,
+                    marginRight: isSmallLandscape ? 40 : undefined,
+                    marginTop: isSmallLandscape ? 10 : undefined
                 }}>
                     <div className="section-title">I/O</div>
                     <div className="gauge-container" style={{
-                        marginTop: isSmallPortrait ? 20 : undefined
+                        marginTop: isSmallLandscape ? 20 : undefined
                     }}>
                         <Gauge
                             value={store.io.diskRead}
@@ -573,28 +589,32 @@ const Monitor = observer(() => {
                             small
                         />
                         <Gauge
-                            value={store.io.networkRx}
-                            max={store.GAUGE_LIMITS.io.networkRx.max}
+                            value={isUsingBackupNetwork ? store.io.backupNetworkRx : store.io.networkRx}
+                            max={isUsingBackupNetwork ? store.GAUGE_LIMITS.io.backupNetworkRx.max : store.GAUGE_LIMITS.io.networkRx.max}
                             label="Network RX"
+                            labelExtra={formatBytes(isUsingBackupNetwork ? store.io.backupNetworkPacketsRx : store.io.networkPacketsRx, 1, 'PPS')}
                             className="io"
                             featherName="globe"
                             small
+                            textColor={isUsingBackupNetwork ? '#F7EE7F' : undefined}
                         />
                         <Gauge
-                            value={store.io.networkTx}
-                            max={store.GAUGE_LIMITS.io.networkTx.max}
+                            value={isUsingBackupNetwork ? store.io.backupNetworkTx : store.io.networkTx}
+                            max={isUsingBackupNetwork ? store.GAUGE_LIMITS.io.backupNetworkTx.max : store.GAUGE_LIMITS.io.networkTx.max}
                             label="Network TX"
+                            labelExtra={formatBytes(isUsingBackupNetwork ? store.io.backupNetworkPacketsTx : store.io.networkPacketsTx, 1, 'PPS')}
                             className="io"
                             featherName="globe"
                             small
+                            textColor={isUsingBackupNetwork ? '#F7EE7F' : undefined}
                         />
                     </div>
                 </div>
                 <div style={{
                     display: 'flex',
-                    marginTop: isSmallPortrait ? 10 : infoMT,
-                    width: isSmallPortrait ? 'calc(50% - 40px)' : undefined,
-                    flexGrow: isSmallPortrait ? 1 : undefined
+                    marginTop: isSmallLandscape ? 10 : infoMT,
+                    width: isSmallLandscape ? 'calc(50% - 40px)' : undefined,
+                    flexGrow: isSmallLandscape ? 1 : undefined
                 }} >
                     <div className="section" style={{ flexGrow: 1, minHeight: sectionMinHeight }}  >
                         <div className="section-title">Fan Speed</div>
@@ -640,141 +660,244 @@ const Monitor = observer(() => {
                         </div>
                     </div>
                 </div>
-                {store.networkMetrics?.ping_statistics?.minute_history && (
-                    <div style={{
-                        width: '100%',
-                        paddingTop: isSmallPortrait ? 8 : 16,
-                        paddingBottom: 16,
-                        cursor: 'pointer',
-                        transform: 'scale(1)',
-                        transition: 'transform 0.2s ease-in-out, filter 0.2s ease-in-out'
-                    }}
-                        onMouseEnter={window.matchMedia("(hover: hover) and (pointer: fine)").matches ? (e) => { e.currentTarget.style.transform = 'scale(1.02)'; e.currentTarget.style.filter = 'brightness(1.5)'; } : undefined}
-                        onMouseLeave={window.matchMedia("(hover: hover) and (pointer: fine)").matches ? (e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.filter = 'brightness(1)'; } : undefined}
-                        onTouchStart={(e) => { e.currentTarget.style.transform = 'scale(1.02)'; e.currentTarget.style.filter = 'brightness(1.5)'; }}
-                        onTouchEnd={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.filter = 'brightness(1)'; }}
-                        onClick={() => {
-                            const formatShort = (date) => {
-                                return new Intl.DateTimeFormat('en-US', {
-                                    month: 'long',
-                                    day: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                    second: '2-digit',
-                                    hour12: false
-                                }).format(date).replace(/, (\d+):/, ', $1:');
-                            };
+                {
+                    store.networkMetrics?.ping_statistics?.minute_history && (
+                        <div style={{
+                            width: '100%',
+                            paddingTop: isSmallLandscape ? 8 : 16,
+                            paddingBottom: 16,
+                            cursor: 'pointer',
+                            transform: 'scale(1)',
+                            transition: 'transform 0.2s ease-in-out, filter 0.2s ease-in-out'
+                        }}
+                            onMouseEnter={window.matchMedia("(hover: hover) and (pointer: fine)").matches ? (e) => { e.currentTarget.style.transform = 'scale(1.02)'; e.currentTarget.style.filter = 'brightness(1.5)'; } : undefined}
+                            onMouseLeave={window.matchMedia("(hover: hover) and (pointer: fine)").matches ? (e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.filter = 'brightness(1)'; } : undefined}
+                            onTouchStart={(e) => { e.currentTarget.style.transform = 'scale(1.02)'; e.currentTarget.style.filter = 'brightness(1.5)'; }}
+                            onTouchEnd={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.filter = 'brightness(1)'; }}
+                            onClick={() => {
+                                const formatShort = (date) => {
+                                    return new Intl.DateTimeFormat('en-US', {
+                                        month: 'long',
+                                        day: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                        second: '2-digit',
+                                        hour12: false
+                                    }).format(date).replace(/, (\d+):/, ', $1:');
+                                };
 
-                            let message = `Active Connections: ${store.io.activeConn}
+                                const pingMetrics = store.networkMetrics.ping_statistics;
+                                const trafficMetrics = store.networkMetrics.network_traffic;
+
+                                // Helper to safely get value or 'N/A'
+                                const getVal = (val, suffix = '') => (val !== null && val !== undefined) ? `${val}${suffix}` : 'N/A';
+
+                                const tableRows = [
+                                    { period: '1m', data: trafficMetrics.historical.last1m },
+                                    { period: '5m', data: trafficMetrics.historical.last5m },
+                                    { period: '15m', data: trafficMetrics.historical.last15m },
+                                    { period: '1h', data: trafficMetrics.historical.last1h },
+                                    { period: '3h', data: trafficMetrics.historical.last3h },
+                                    { period: '12h', data: trafficMetrics.historical.last12h },
+                                    { period: '24h', data: trafficMetrics.historical.last1d },
+                                    { period: '3d', data: trafficMetrics.historical.last3d },
+                                    { period: '7d', data: trafficMetrics.historical.last7d },
+                                    { period: '30d', data: trafficMetrics.historical.last30d },
+                                ];
+
+                                const pingLatencyRows = [
+                                    { period: 'Now', latency: pingMetrics.latency.latest, packetLoss: pingMetrics.packet_loss.latest_percent },
+                                    { period: '1m', latency: pingMetrics.latency.last1m, packetLoss: pingMetrics.packet_loss.last1m },
+                                    { period: '5m', latency: pingMetrics.latency.last5m, packetLoss: pingMetrics.packet_loss.last5m },
+                                    { period: '1h', latency: pingMetrics.latency.last1h, packetLoss: pingMetrics.packet_loss.last1h },
+                                    { period: '24h', latency: pingMetrics.latency.last24h, packetLoss: pingMetrics.packet_loss.last24h },
+                                ];
+
+                                // Calculate column widths for Traffic Table
+                                let maxPeriodWidth = 'T'.length;
+                                let maxRxAvgWidth = 'RX μ/s'.length; // Account for /s here
+                                let maxRxTotalWidth = 'RX Σ'.length;
+                                let maxTxAvgWidth = 'TX μ/s'.length; // Account for /s here
+                                let maxTxTotalWidth = 'TX Σ'.length;
+
+                                for (const row of tableRows) {
+                                    maxPeriodWidth = Math.max(maxPeriodWidth, row.period.length);
+                                    maxRxAvgWidth = Math.max(maxRxAvgWidth, (formatBytes(row.data.avg_rx_Bps, 1, 'B', false) + '/s').length);
+                                    maxRxTotalWidth = Math.max(maxRxTotalWidth, formatBytes(row.data.cum_rx, 1, 'B', false).length);
+                                    maxTxAvgWidth = Math.max(maxTxAvgWidth, (formatBytes(row.data.avg_tx_Bps, 1, 'B', false) + '/s').length);
+                                    maxTxTotalWidth = Math.max(maxTxTotalWidth, formatBytes(row.data.cum_tx, 1, 'B', false).length);
+                                }
+
+                                // Build the traffic table string
+                                const trafficHeader = `${'T'.padEnd(maxPeriodWidth)} | ${'RX μ/s'.padEnd(maxRxAvgWidth)} | ${'RX Σ'.padEnd(maxRxTotalWidth)} | ${'TX μ/s'.padEnd(maxTxAvgWidth)} | ${'TX Σ'.padEnd(maxTxTotalWidth)}`;
+                                const trafficSeparator = `${'-'.repeat(maxPeriodWidth)} - ${'-'.repeat(maxRxAvgWidth)} - ${'-'.repeat(maxRxTotalWidth)} - ${'-'.repeat(maxTxAvgWidth)} - ${'-'.repeat(maxTxTotalWidth)}`;
+
+                                const trafficRows = tableRows.map(row => {
+                                    const rxAvg = formatBytes(row.data.avg_rx_Bps, 1, 'B', false) + '/s';
+                                    const rxTotal = formatBytes(row.data.cum_rx, 1, 'B', false);
+                                    const txAvg = formatBytes(row.data.avg_tx_Bps, 1, 'B', false) + '/s';
+                                    const txTotal = formatBytes(row.data.cum_tx, 1, 'B', false);
+                                    return `${row.period.padEnd(maxPeriodWidth)} | ${rxAvg.padEnd(maxRxAvgWidth)} | ${rxTotal.padEnd(maxRxTotalWidth)} | ${txAvg.padEnd(maxTxAvgWidth)} | ${txTotal.padEnd(maxTxTotalWidth)}`;
+                                }).join('\n');
+
+                                const trafficTable = [trafficHeader, trafficSeparator, trafficRows].join('\n');
+
+                                // Calculate column widths for Ping/Latency Table
+                                let maxPingPeriodWidth = 'T'.length;
+                                let maxLatencyWidth = 'Latency (ms)'.length;
+                                let maxPacketLossWidth = 'Packet Loss (%)'.length;
+
+                                for (const row of pingLatencyRows) {
+                                    maxPingPeriodWidth = Math.max(maxPingPeriodWidth, row.period.length);
+                                    // Ensure getVal is called with correct suffix for length calculation
+                                    maxLatencyWidth = Math.max(maxLatencyWidth, getVal(row.latency, 'ms').length);
+                                    maxPacketLossWidth = Math.max(maxPacketLossWidth, getVal(row.packetLoss, '%').length);
+                                }
+
+                                // Build the ping/latency table string
+                                const pingHeader = `${'T'.padEnd(maxPingPeriodWidth)} | ${'Latency (ms)'.padEnd(maxLatencyWidth)} | ${'Packet Loss (%)'.padEnd(maxPacketLossWidth)}`;
+                                const pingSeparator = `${'-'.repeat(maxPingPeriodWidth)} - ${'-'.repeat(maxLatencyWidth)} - ${'-'.repeat(maxPacketLossWidth)}`;
+
+                                const pingRows = pingLatencyRows.map(row => {
+                                    const latency = getVal(row.latency, 'ms');
+                                    const packetLoss = getVal(row.packetLoss, '%');
+                                    return `${row.period.padEnd(maxPingPeriodWidth)} | ${latency.padEnd(maxLatencyWidth)} | ${packetLoss.padEnd(maxPacketLossWidth)}`;
+                                }).join('\n');
+
+                                const pingTable = [pingHeader, pingSeparator, pingRows].join('\n');
+
+                                let message = `Active Connections: ${store.io.activeConn}
 
 Open Ports: ${store.networkMetrics.internet_ports.map(s => s.replace(/open/g, '').trim())?.join(', ') || 'None'}
 
-Ping latency:
-Current: ${store.networkMetrics.ping_statistics.latency.latest}ms
-1 Minute Avg: ${store.networkMetrics.ping_statistics.latency.last1m}ms
-5 Minutes Avg: ${store.networkMetrics.ping_statistics.latency.last5m}ms
-1 Hour Avg: ${store.networkMetrics.ping_statistics.latency.last1h}ms
-24 Hours Avg: ${store.networkMetrics.ping_statistics.latency.last24h}ms
+${pingTable}
 
-Packet loss:
-Current: ${store.networkMetrics.ping_statistics.packet_loss.latest_percent}%
-1 Minute: ${store.networkMetrics.ping_statistics.packet_loss.last1m}%
-5 Minutes: ${store.networkMetrics.ping_statistics.packet_loss.last5m}%
-1 Hour: ${store.networkMetrics.ping_statistics.packet_loss.last1h}%
-24 Hours: ${store.networkMetrics.ping_statistics.packet_loss.last24h}%
+${trafficTable}
 
 Recent outages:
-${store.networkMetrics.ping_statistics.outages.reverse().map(o => {
-                                const start = formatShort(new Date(o.start));
-                                const end = formatShort(new Date(o.end));
-                                const mins = Math.floor(o.duration_seconds / 60);
-                                const secs = o.duration_seconds % 60;
-                                return `${start} – ${end} (${mins}m${secs}s)`;
-                            }).join('\n') || 'None in last 24 hours'}
+${pingMetrics.outages.reverse().map(o => {
+                                    const start = formatShort(new Date(o.start));
+                                    const end = formatShort(new Date(o.end));
+                                    const mins = Math.floor(o.duration_seconds / 60);
+                                    const secs = o.duration_seconds % 60;
+                                    return `- ${start} – ${end} (${mins}m${secs}s)`;
+                                }).join('\n') || 'None in last 24 hours'}
 
 Last updated: ${formatTimeDiff(store.networkMetrics?.last_updated)}`;
-                            panelAlert(message, 'Network Info');
-                        }}>
-                        <div style={{
-                            display: 'flex',
-                            flexGrow: isSmallPortrait ? 1 : undefined,
-                            justifyContent: 'space-between',
-                            position: 'relative',
-                            zIndex: 2
-                        }}>
-                            {store.networkMetrics?.ping_statistics?.minute_history.map((h, i, arr) => {
-                                const timestamp = new Date(store.networkMetrics.ping_statistics.minute_history[i].timestamp);
-                                const formattedTime = timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-                                return (
-                                    <div
-                                        key={i}
-                                        style={{
-                                            width: '100%',
-                                            marginRight: '0.05em',
-                                            height: 20,
-                                            opacity: 1 - ((arr.length - (i + 1)) * 0.015),
-                                            backgroundColor: h.latency_ms === null || h.latency_ms === -1
-                                                ? '#444444'
-                                                : getColorAtPercent(Math.min(100, Math.max((h.latency_ms ** 2) / 10, h.packet_loss_percent))),
-                                            position: 'relative'
-                                        }}
-                                        title={`Time: ${formattedTime}\nLatency: ${h.latency_ms !== null && h.latency_ms !== -1 ? h.latency_ms + 'ms' : 'N/A'}\nPacket Loss: ${h.packet_loss_percent !== null && h.packet_loss_percent !== -1 ? h.packet_loss_percent + '%' : 'N/A'}`}
-                                    >
+                                panelAlert(message, 'Network Info');
+                            }}>
+                            <div style={{
+                                display: 'flex',
+                                flexGrow: isSmallLandscape ? 1 : undefined,
+                                justifyContent: 'space-between',
+                                position: 'relative',
+                                zIndex: 2
+                            }}>
+                                {store.networkMetrics?.ping_statistics?.minute_history.map((h, i, arr) => {
+                                    const timestamp = new Date(store.networkMetrics.ping_statistics.minute_history[i].timestamp);
+                                    const formattedTime = timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+                                    return (
+                                        <div
+                                            key={i}
+                                            style={{
+                                                width: '100%',
+                                                marginRight: i + 1 === arr.length ? 0 : (isSmallScreen ? '0.05em' : '1px'),
+                                                height: 20,
+                                                opacity: 1 - ((arr.length - (i + 1)) * 0.015),
+                                                backgroundColor: h.latency_ms === null || h.latency_ms === -1
+                                                    ? '#444444'
+                                                    : getColorAtPercent(Math.min(100, Math.max((h.latency_ms ** 2) / 10, h.packet_loss_percent))),
+                                                position: 'relative'
+                                            }}
+                                            title={`Time: ${formattedTime}\nLatency: ${h.latency_ms !== null && h.latency_ms !== -1 ? h.latency_ms + 'ms' : 'N/A'}\nPacket Loss: ${h.packet_loss_percent !== null && h.packet_loss_percent !== -1 ? h.packet_loss_percent + '%' : 'N/A'}`}
+                                        >
+                                        </div>
+                                    );
+                                })}
 
-                                            {/* Masking Progress Bar */}
-                                            <div
-                                                style={{
-                                                    height: 10,
-                                                    width: `${100 - progressPercentage}%`, // Starts from the right and reduces as progress increases
-                                                    background: 'white', // White to mask the underlying gradient
-                                                    position: 'absolute',
-                                                    top: 0,
-                                                    right: 0, // Start from the right side
-                                                    borderTopRightRadius: 5, // Inverse border radius for the top right corner
-                                                    borderBottomRightRadius: 5, // Inverse border radius for the bottom right corner
-                                                }}
-                                            />
-                                        </div>
-                                        <div style={{ marginTop: 5, textAlign: 'left', width: '100%', opacity: 0.6, fontSize: '80%' }}>
-                                            {progressPercentage}% - {daysLeft} days | {hoursLeft} hours | {minutesLeft} minutes left
-                                        </div>
+                            </div>
+                            {store.networkMetrics?.network_traffic?.minute_history && (
+                                <div style={{
+                                    width: '100%',
+                                    paddingTop: 1,
+                                    paddingBottom: -3,
+                                    cursor: 'pointer',
+                                    transform: 'scale(1)',
+                                    transition: 'transform 0.2s ease-in-out, filter 0.2s ease-in-out'
+                                }}
+                                >
+                                    <div style={{
+                                        display: 'flex',
+                                        flexGrow: undefined,
+                                        justifyContent: 'space-between',
+                                        position: 'relative',
+                                        zIndex: 2
+                                    }}>
+                                        {store.networkMetrics?.network_traffic?.minute_history.map((h, i, arr) => {
+                                            const timestamp = new Date(store.networkMetrics.network_traffic.minute_history[i].timestamp);
+                                            const formattedTime = timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+                                            let traffic = h.avg_rx_Bps + h.avg_tx_Bps;
+                                            let noTraffic = traffic === 0;
+                                            let rx = formatBytes(h.avg_rx_Bps, 1, 'B/s');
+                                            let tx = formatBytes(h.avg_tx_Bps, 1, 'B/s');
+                                            let rxPct = h.avg_rx_Bps / store.GAUGE_LIMITS.io.networkRx.max;
+                                            let txPct = h.avg_tx_Bps / store.GAUGE_LIMITS.io.networkTx.max;
+                                            let pct = Math.min(100, (rxPct ** 0.4) * 100, (txPct ** 0.4) * 100);
+                                            return (
+                                                <div
+                                                    key={i}
+                                                    style={{
+                                                        width: '100%',
+                                                        height: 2,
+                                                        opacity: 1 - ((arr.length - (i + 1)) * 0.015),
+                                                        backgroundColor: noTraffic
+                                                            ? '#444444'
+                                                            : getColorAtPercent(pct),
+                                                        position: 'relative'
+                                                    }}
+                                                    title={`Time: ${formattedTime}\nRX: ${!noTraffic ? rx : 'N/A'}\nTX: ${!noTraffic ? tx : 'N/A'}\nPCT: ${pct}`}
+                                                >
+
+                                                </div>
+                                            );
+                                        })}
                                     </div>
-                        );
-                            })()}
-                    </div>
-                        {store.networkMetrics?.ping_statistics?.latency && (
-                    <div style={{
-                        zIndex: 2,
-                        marginTop: 4,
-                        justifyContent: 'space-between',
-                        position: 'relative',
-                        fontSize: '0.8em',
-                        display: 'flex'
-                    }}>
-                        <div
-                            style={{ fontWeight: 400, opacity: 0.5, marginLeft: -2, }}
-                        >{store.networkMetrics?.internet_ports.map(s => s.replace(/open/g, '').trim()).join(', ')}
-                        </div>
-                        <div style={{
-                            fontWeight: 400,
-                            opacity: 0.8,
-                            marginRight: -2,
-                            color: getColorAtPercent(Math.min(100, Math.max(
-                                ((store.networkMetrics?.ping_statistics?.latency.last1m || store.networkMetrics.ping_statistics.latency.latest) ** 2) / 10,
-                                store.networkMetrics?.ping_statistics?.packet_loss.last1m)
-                            ))
-                        }} >
-                            {Date.now() - store.networkMetrics?.last_updated > 7000 && <>{formatTimeDiff(store.networkMetrics?.last_updated)} •&nbsp;</>}
-                            {store.io.activeConn} conns •&nbsp;
-                            {store.networkMetrics?.ping_statistics?.latency.last1m?.toFixed(1) || store.networkMetrics.ping_statistics.latency.latest?.toFixed(1)}ms •&nbsp;
-                            {store.networkMetrics?.ping_statistics?.packet_loss.last1m?.toFixed(1)}% loss
-                        </div>
+                                </div>
 
-                    </div>
-                )}
+                            )}
+                            {store.networkMetrics?.ping_statistics?.latency && (
+                                <div style={{
+                                    zIndex: 2,
+                                    marginTop: 4,
+                                    justifyContent: 'space-between',
+                                    position: 'relative',
+                                    fontSize: '0.8em',
+                                    display: 'flex'
+                                }}>
+                                    <div
+                                        style={{ fontWeight: 400, opacity: 0.5, marginLeft: -2, }}
+                                    >{store.networkMetrics?.internet_ports.map(s => s.replace(/open/g, '').trim()).join(', ')}
+                                    </div>
+                                    <div style={{
+                                        fontWeight: 400,
+                                        opacity: 0.8,
+                                        marginRight: -2,
+                                        color: getColorAtPercent(Math.min(100, Math.max(
+                                            ((store.networkMetrics?.ping_statistics?.latency.last1m || store.networkMetrics.ping_statistics.latency.latest) ** 2) / 10,
+                                            store.networkMetrics?.ping_statistics?.packet_loss.last1m)
+                                        ))
+                                    }} >
+                                        {Date.now() - store.networkMetrics?.last_updated > 7000 && <>{formatTimeDiff(store.networkMetrics?.last_updated)} •&nbsp;</>}
+                                        {store.io.activeConn} conns •&nbsp;
+                                        {store.networkMetrics?.ping_statistics?.latency.last1m?.toFixed(1) || store.networkMetrics.ping_statistics.latency.latest?.toFixed(1)}ms •&nbsp;
+                                        {store.networkMetrics?.ping_statistics?.packet_loss.last1m?.toFixed(1)}% loss
+                                    </div>
+
+                                </div>
+                            )}
+                        </div >
+                    )}
             </div >
-                )}
-        </div >
             {!shouldPowerSave() &&
                 <div style={{
                     display: 'flex',
@@ -818,43 +941,43 @@ Last updated: ${formatTimeDiff(store.networkMetrics?.last_updated)}`;
                         </div>
                     </div>
                 </div>
-}
-{
-    !shouldPowerSave() &&
-    <div style={{
-        position: 'fixed',
-        width: '100%',
-        height: '100%',
-        backgroundColor: '#232323f0',
-        // backdropFilter: 'blur(4px) brightness(0.65)',
-        display: 'flex',
-        opacity: store.powerSaveAnimState && fsMessage ? 1 : 0,
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 5,
-        marginLeft: -20,
-        marginRight: -20,
-        transition: 'all 0.5s ease-in-out',
-        pointerEvents: store.vaState >= 2 ? null : 'none'
-    }} onClick={() => {
-        if (store.vaState === STATE.PLAYING_TTS) {
-            setVAState(STATE.WAKE_WORD_TRIGGERED); // Interrupt TTS and listen again
-            return;
-        }
-        if (store.vaState === STATE.WAKE_WORD_TRIGGERED && !store.isUserSpeaking) {
-            pipelineActive = false; // Cancel listening
-            resetAudioStreamingState();
-            setVAState(STATE.IDLE);
-            return;
-        }
-        if (store.vaState === STATE.SENDING_AUDIO) {
-            resetAll(false);
-        }
-    }}>
-        {fsMessage}
-    </div>
-}
+            }
+            {
+                !shouldPowerSave() &&
+                <div style={{
+                    position: 'fixed',
+                    width: '100%',
+                    height: '100%',
+                    backgroundColor: '#232323f0',
+                    // backdropFilter: 'blur(4px) brightness(0.65)',
+                    display: 'flex',
+                    opacity: store.powerSaveAnimState && fsMessage ? 1 : 0,
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 5,
+                    marginLeft: -20,
+                    marginRight: -20,
+                    transition: 'all 0.5s ease-in-out',
+                    pointerEvents: store.vaState >= 2 ? null : 'none'
+                }} onClick={() => {
+                    if (store.vaState === STATE.PLAYING_TTS) {
+                        setVAState(STATE.WAKE_WORD_TRIGGERED); // Interrupt TTS and listen again
+                        return;
+                    }
+                    if (store.vaState === STATE.WAKE_WORD_TRIGGERED && !store.isUserSpeaking) {
+                        pipelineActive = false; // Cancel listening
+                        resetAudioStreamingState();
+                        setVAState(STATE.IDLE);
+                        return;
+                    }
+                    if (store.vaState === STATE.SENDING_AUDIO) {
+                        resetAll(false);
+                    }
+                }}>
+                    {fsMessage}
+                </div>
+            }
         </>
     )
 });
@@ -1877,5 +2000,3 @@ document.querySelector("body").addEventListener('click', (e) => {
 document.querySelector("body").addEventListener('touchstart', (e) => {
     store.lastInteract = Date.now();
 });
-
-
