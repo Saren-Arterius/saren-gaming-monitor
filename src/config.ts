@@ -5,8 +5,8 @@ export const CONFIG = {
         SYSTEM_INFO: {
             hostname: execSync("hostname").toString().trim(),
             os: execSync('uname -r').toString().trim(),
-            cpu: 'Intel® Core™ i9-13900H',
-            case: 'Minisforum MS-01',
+            cpu: 'AMD Ryzen 7 6800U',
+            case: 'Lenovo Yoga 7 Gen 7 14ARB7',
         },
 
         GAUGE_LIMITS: {
@@ -14,10 +14,10 @@ export const CONFIG = {
                 cpu: { min: 30, max: 90 },
             },
             io: {
-                diskRead: { max: 5000 * 1024 * 1024 }, // PCIE 3.0 + PCIE 4.0 NVME SSD
-                diskWrite: { max: 5000 * 1024 * 1024 },
-                networkRx: { max: 500 * 1024 * 1024 }, // 4x1000 Network
-                networkTx: { max: 250 * 1024 * 1024 },
+                diskRead: { max: 1500 * 1024 * 1024 }, // PCIE 3.0 + PCIE 4.0 NVME SSD
+                diskWrite: { max: 1500 * 1024 * 1024 },
+                networkRx: { max: 125 * 1024 * 1024 }, // 4x1000 Network
+                networkTx: { max: 125 * 1024 * 1024 },
                 backupNetworkRx: { max: 6 * 1024 * 1024 }, // 42Mbps Network
                 backupNetworkTx: { max: 1 * 1024 * 1024 }
             },
@@ -29,26 +29,15 @@ export const CONFIG = {
     },
     // lm_sensors json output, See `sensors -j`
     sensors: {
-        cpu: {
-            temperature: 'coretemp-isa-0000',
-            tempField: 'Package id 0',
-            tempInput: 'temp1_input'
+        "cpu": {
+            "temperature": "k10temp-pci-00c3",
+            "tempField": "Tctl",
+            "tempInput": "temp1_input"
         },
-        fans: {
-            systemSSD: {
-                controller: 'nct6798-isa-0a20',
-                id: 'fan1',
-                input: 'fan1_input'
-            },
-            cpu: {
-                controller: 'nct6798-isa-0a20',
-                id: 'fan2',
-                input: 'fan2_input'
-            }
-        }
+        "fans": {}
     },
     network: {
-        interface: 'ext1',
+        interface: 'wlp1s0',
         backupInterface: 'enp0s20f0u4',
     },
     server: {
@@ -73,31 +62,22 @@ export const CONFIG = {
         loadavg: '/proc/loadavg',
 
     },
-    networkStatusAPI: 'http://100.64.0.5:8080/metrics' as string | null,
-    iotLeases: '/var/lib/misc/dnsmasq.10.leases' as string | null,
+    networkStatusAPI: null,
+    iotLeases: null,
     disks: {
-        systemSSD: {
-            label: 'systemSSD',
-            name: 'System',
-            device: '/dev/disk/by-id/nvme-Micron_7300_MTFDHBG3T8TDF_21012D5EF921',
-            mountPoint: '/',
-            tempLimit: { min: 30, max: 76 },
-            sensor: {
-                temperature: 'nvme-pci-5900',
-                tempField: 'Composite',
-                tempInput: 'temp1_input'
-            }
-        },
-        storageSSD: {
-            label: 'storageSSD',
-            name: 'Storage',
-            device: '/dev/disk/by-id/nvme-SAMSUNG_MZQL215THBLA-00AAZ_S6GTNE0T500485',
-            mountPoint: '/mnt/storage',
-            tempLimit: { min: 30, max: 84 },
-            sensor: {
-                temperature: 'nvme-pci-0200',
-                tempField: 'Composite',
-                tempInput: 'temp1_input'
+        "system": {
+            "label": "system",
+            "name": "System",
+            "device": "/dev/disk/by-id/nvme-KBG50ZNT1T02_LS_KIOXIA_622C857PEJP6",
+            "mountPoint": "/",
+            "tempLimit": {
+                "min": 30,
+                "max": 70
+            },
+            "sensor": {
+                "temperature": "nvme-pci-0200",
+                "tempField": "Composite",
+                "tempInput": "temp1_input"
             }
         }
     }
