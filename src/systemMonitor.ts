@@ -1,10 +1,16 @@
-import { readFile } from 'fs/promises';
-import { exec } from 'child_process';
-import util from 'node:util';
 import { CONFIG } from './config';
-import { LastStats, NetworkMetrics, SystemMetrics } from './types';
+import { LastStats, NetworkMetrics, SystemMetrics, SSDMetrics } from './types';
 
-const execAsync = util.promisify(exec);
+async function execAsync(command: string): Promise<{ stdout: string, stderr: string }> {
+    const proc = Bun.spawn(["sh", "-c", command], {
+        stdout: "pipe",
+        stderr: "pipe",
+    });
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+    await proc.exited;
+    return { stdout, stderr };
+}
 
 const STORAGE_HEALTH_RESULTS_TEMPLATE = {
     status: 0, // 0 = normal, 1 = warning, 2 = critical
@@ -23,18 +29,32 @@ export class SystemMonitor {
         networkTxTotal: 0
     }
 
-    private storageInfo = {
-        storage: {
-            paths: ['/dev/disk/by-id/nvme-SAMSUNG_MZQL215THBLA-00AAZ_S6GTNE0T500485', '/mnt/storage'],
+    private fsTypes: { [key: string]: string } = {};
+    private deviceNames: { [key: string]: string } = {};
+
+    private storageInfo = Object.values(CONFIG.disks).reduce((acc, disk) => {
+        acc[disk.label] = {
+            paths: [disk.device, disk.mountPoint],
             lastUpdate: 0,
-            info: STORAGE_HEALTH_RESULTS_TEMPLATE,
-        },
-        system: {
-            paths: ['/dev/disk/by-id/nvme-Micron_7300_MTFDHBG3T8TDF_21012D5EF921', '/'],
-            lastUpdate: 0,
-            info: STORAGE_HEALTH_RESULTS_TEMPLATE,
-        },
-    };
+            info: JSON.parse(JSON.stringify(STORAGE_HEALTH_RESULTS_TEMPLATE))
+        };
+        return acc;
+    }, {} as { [key: string]: { paths: string[], lastUpdate: number, info: any } });
+
+    async resolveDeviceNames() {
+        if (Object.keys(this.deviceNames).length > 0) return;
+
+        for (const disk of Object.values(CONFIG.disks)) {
+            try {
+                const { stdout } = await execAsync(`readlink -f ${disk.device}`);
+                const devicePath = stdout.trim();
+                const deviceName = devicePath.split('/').pop() || '';
+                this.deviceNames[disk.label] = deviceName;
+            } catch (e) {
+                console.error(`Failed to resolve device name for ${disk.label}`, e);
+            }
+        }
+    }
 
     async updateMetrics() {
         const data = await this.collectData();
@@ -47,6 +67,7 @@ export class SystemMonitor {
     }
 
     async updateNetworkMetrics() {
+        if (!CONFIG.networkStatusAPI) return null;
         try {
             const response = await fetch(CONFIG.networkStatusAPI);
             if (!response.ok) {
@@ -78,38 +99,55 @@ export class SystemMonitor {
     }
 
     async collectData() {
+        await this.resolveDeviceNames();
         const files = CONFIG.systemFiles;
+        const disks = Object.values(CONFIG.disks);
+        const dfCommands = disks.map(disk => `df -ml ${disk.mountPoint} | tail -n 1`);
+
         const commands = [
-            'df -ml / | tail -n 1',
-            'df -ml /mnt/storage | tail -n 1',
+            ...dfCommands,
             "ss -tuna state established | grep -v '127.0.0.1' | grep -v '::1' | wc -l",
             "ip route | grep metric | grep default"
         ];
 
-        const [{ stdout: sensors }, ...data] = await Promise.all([
-            execAsync(CONFIG.commands.sensors.command),
-            ...commands.map(cmd => execAsync(cmd)),
-            ...Object.values(files).map(f => readFile(f).then(b => b.toString()))
+        const sensorPromise = execAsync(CONFIG.commands.sensors.command);
+        const commandPromises = commands.map(cmd => execAsync(cmd));
+        const filePromises = Object.values(files).map(f => Bun.file(f).text());
+
+        const [sensorResult, ...rest] = await Promise.all([
+            sensorPromise,
+            ...commandPromises,
+            ...filePromises
         ]);
 
+        const commandResults = rest.slice(0, commands.length) as { stdout: string, stderr: string }[];
+        const fileResults = rest.slice(commands.length) as string[];
+
+        const dfResults = commandResults.slice(0, dfCommands.length).map(r => r.stdout.trim().split(/\s+/));
+        const otherCommandResults = commandResults.slice(dfCommands.length);
+
+        const storageStats: { [key: string]: string[] } = {};
+        disks.forEach((disk, index) => {
+            storageStats[disk.label] = dfResults[index];
+        });
+
         return {
-            sensors: JSON.parse(sensors),
-            ssdStats: data[0].stdout.split(' '),
-            ssd2Stats: data[1].stdout.split(' '),
-            activeConn: data[2].stdout.trim(),
-            ipRoute: data[3].stdout.trim(),
-            stat: data[commands.length + 0].split('\n'),
-            meminfo: data[commands.length + 1].split('\n'),
-            diskstats: data[commands.length + 2].split('\n'),
-            netdev: data[commands.length + 3].split('\n').map(l => l.trim()),
-            cpuinfo: data[commands.length + 4].split('\n'),
-            uptime: data[commands.length + 5].trim(),
-            loadavg: data[commands.length + 6].trim()
+            sensors: JSON.parse(sensorResult.stdout),
+            storageStats,
+            activeConn: otherCommandResults[0].stdout.trim(),
+            ipRoute: otherCommandResults[1].stdout.trim(),
+            stat: fileResults[0].split('\n'),
+            meminfo: fileResults[1].split('\n'),
+            diskstats: fileResults[2].split('\n'),
+            netdev: fileResults[3].split('\n').map(l => l.trim()),
+            cpuinfo: fileResults[4].split('\n'),
+            uptime: fileResults[5].trim(),
+            loadavg: fileResults[6].trim()
         };
     }
 
 
-    formatUptime(seconds) {
+    formatUptime(seconds: number) {
         const days = Math.floor(seconds / 86400);
         const hours = Math.floor((seconds % 86400) / 3600);
         const minutes = Math.floor((seconds % 3600) / 60);
@@ -118,16 +156,16 @@ export class SystemMonitor {
     }
 
 
-    transformSystemInfo(data) {
+    transformSystemInfo(data: any) {
         const now = Date.now();
 
         // console.log(data.ssdStats)
-        let total = data.meminfo.find(line => line.startsWith('MemTotal:')).split(/\s+/)[1] / 1024;
-        let avail = data.meminfo.find(line => line.startsWith('MemAvailable:')).split(/\s+/)[1] / 1024;
+        let total = parseFloat(data.meminfo.find((line: string) => line.startsWith('MemTotal:')).split(/\s+/)[1]) / 1024;
+        let avail = parseFloat(data.meminfo.find((line: string) => line.startsWith('MemAvailable:')).split(/\s+/)[1]) / 1024;
         let memUsed = total - avail;
         let memUsage = memUsed / total;
 
-        let cpuMhzs = data.cpuinfo.filter(l => l.startsWith('cpu MHz')).map(s => parseFloat(s.split(':')[1]));
+        let cpuMhzs = data.cpuinfo.filter((l: string) => l.startsWith('cpu MHz')).map((s: string) => parseFloat(s.split(':')[1]));
 
         const formattedUptime = this.formatUptime(parseFloat(data.uptime));
         // Read load averages
@@ -135,38 +173,94 @@ export class SystemMonitor {
         const loadavg = data.loadavg
             .split(' ')
             .slice(0, 3)
-            .map(num => parseFloat(num).toFixed(2))
+            .map((num: string) => parseFloat(num).toFixed(2))
             .join(' ');
 
         // Combine the information in required format
         let system = `${formattedUptime} | ${loadavg}`;
 
-        const result = {
+        const disksMetrics: { [label: string]: SSDMetrics } = {};
+        let totalDiskRead = 0;
+        let totalDiskWrite = 0;
+
+        const timeDiff = this.lastStats ? (now - this.lastStats.lastUpdate) / 1000 : 0;
+
+        for (const disk of Object.values(CONFIG.disks)) {
+            const stats = data.storageStats[disk.label];
+            // df output split by \s+:
+            // 0: device, 1: total, 2: used, 3: avail, 4: use%, 5: mount
+            const usage = stats ? parseInt(stats[4].replace('%', '')) : 0;
+            const usageGB = stats ? Math.round(parseInt(stats[2]) / 1024) : 0;
+
+            let temperature = 0;
+            if (disk.sensor) {
+                try {
+                    temperature = Math.round(parseFloat(data.sensors[disk.sensor.temperature][disk.sensor.tempField][disk.sensor.tempInput]));
+                } catch (e) {
+                    // console.error(`Failed to read temperature for ${disk.label}`, e);
+                }
+            }
+
+            let diskRead = 0;
+            let diskWrite = 0;
+
+            if (this.lastStats && timeDiff > 0) {
+                const deviceName = this.deviceNames[disk.label];
+                if (deviceName) {
+                    const findDiskStat = (stats: string[]) => stats.find(line => {
+                        const parts = line.trim().split(/\s+/);
+                        return parts[2] === deviceName;
+                    });
+
+                    const prevLine = findDiskStat(this.lastStats.diskstats);
+                    const currentLine = findDiskStat(data.diskstats);
+
+                    if (prevLine && currentLine) {
+                        const prevParts = prevLine.trim().split(/\s+/);
+                        const currentParts = currentLine.trim().split(/\s+/);
+                        // Field 5 is read sectors, Field 9 is write sectors
+                        const readBytes = (parseInt(currentParts[5]) - parseInt(prevParts[5])) * 512 / timeDiff;
+                        const writeBytes = (parseInt(currentParts[9]) - parseInt(prevParts[9])) * 512 / timeDiff;
+
+                        diskRead = Math.round(readBytes);
+                        diskWrite = Math.round(writeBytes);
+                    }
+                }
+            }
+
+            totalDiskRead += diskRead;
+            totalDiskWrite += diskWrite;
+
+            disksMetrics[disk.label] = {
+                label: disk.label,
+                name: disk.name,
+                temperature,
+                temperatureLimit: disk.tempLimit,
+                usage,
+                usageGB,
+                diskRead,
+                diskWrite
+            };
+        }
+
+        const result: SystemMetrics = {
             temperatures: {
                 cpu: Math.round(parseFloat(data.sensors[CONFIG.sensors.cpu.temperature][CONFIG.sensors.cpu.tempField][CONFIG.sensors.cpu.tempInput])),
                 gpu: undefined,
-                ssd: Math.round(parseFloat(data.sensors[CONFIG.sensors.ssd.temperature][CONFIG.sensors.ssd.tempField][CONFIG.sensors.ssd.tempInput])),
-                ssd2: Math.round(parseFloat(data.sensors[CONFIG.sensors.ssd2.temperature][CONFIG.sensors.ssd2.tempField][CONFIG.sensors.ssd2.tempInput]))
             },
             usage: {
                 cpu: 0,
                 gpu: undefined,
                 ram: Math.round(memUsage * 100),
                 vram: undefined,
-                ssd: parseInt(data.ssdStats[6]),
-                ssd2: parseInt(data.ssd2Stats[6]),
             },
             usageMB: {
                 ram: Math.round(memUsed),
                 vram: undefined,
             },
-            usageGB: {
-                ssd: Math.round(parseInt(data.ssdStats[2]) / 1024),
-                ssd2: Math.round(parseInt(data.ssd2Stats[2]) / 1024),
-            },
             io: {
-                diskRead: 0,
-                diskWrite: 0,
+                diskRead: totalDiskRead,
+                diskWrite: totalDiskWrite,
                 networkRx: 0,
                 networkTx: 0,
                 networkPacketsRx: 0,
@@ -183,9 +277,10 @@ export class SystemMonitor {
                 routeMetrics: {},
             },
             fanSpeed: {
-                cpu: parseInt(data.sensors[CONFIG.sensors.fans.controller][CONFIG.sensors.fans.cpu.id][CONFIG.sensors.fans.cpu.input]),
-                ssd: parseInt(data.sensors[CONFIG.sensors.fans.controller][CONFIG.sensors.fans.ssd.id][CONFIG.sensors.fans.ssd.input])
+                cpu: parseInt(data.sensors[CONFIG.sensors.fans.cpu.controller][CONFIG.sensors.fans.cpu.id][CONFIG.sensors.fans.cpu.input]),
+                ssd: parseInt(data.sensors[CONFIG.sensors.fans.systemSSD.controller][CONFIG.sensors.fans.systemSSD.id][CONFIG.sensors.fans.systemSSD.input])
             },
+            disks: disksMetrics,
             frequencies: {
                 cpu: cpuMhzs
             },
@@ -197,39 +292,24 @@ export class SystemMonitor {
         };
 
         if (this.lastStats) {
-            const prevCpu = this.lastStats.stat[0].split(' ').slice(1).filter(x => x).map(Number);
-            const currentCpu = data.stat[0].split(' ').slice(1).filter(x => x).map(Number);
+            const prevCpu = this.lastStats.stat[0].split(' ').slice(1).filter((x: string) => x).map(Number);
+            const currentCpu = data.stat[0].split(' ').slice(1).filter((x: string) => x).map(Number);
 
             const prevIdle = prevCpu[3] + prevCpu[4];
             const currentIdle = currentCpu[3] + currentCpu[4];
 
-            const prevTotal = prevCpu.reduce((a, b) => a + b, 0);
-            const currentTotal = currentCpu.reduce((a, b) => a + b, 0);
+            const prevTotal = prevCpu.reduce((a: number, b: number) => a + b, 0);
+            const currentTotal = currentCpu.reduce((a: number, b: number) => a + b, 0);
 
             const idleDiff = currentIdle - prevIdle;
             const totalDiff = currentTotal - prevTotal;
 
             result.usage.cpu = Math.round((1 - idleDiff / totalDiff) * 100);
 
-            const timeDiff = (now - this.lastStats.lastUpdate) / 1000;
-
-            const prevDiskStorage = this.lastStats.diskstats[0].split(' ').filter(x => x);
-            const currentDiskStorage = data.diskstats[0].split(' ').filter(x => x);
-            const readBytesStorage = (parseInt(currentDiskStorage[5]) - parseInt(prevDiskStorage[5])) * 512 / timeDiff;
-            const writeBytesStorage = (parseInt(currentDiskStorage[9]) - parseInt(prevDiskStorage[9])) * 512 / timeDiff;
-
-            const prevDiskSystem = this.lastStats.diskstats[4].split(' ').filter(x => x);
-            const currentDiskSystem = data.diskstats[4].split(' ').filter(x => x);
-            const readBytesSystem = (parseInt(currentDiskSystem[5]) - parseInt(prevDiskSystem[5])) * 512 / timeDiff;
-            const writeBytesSystem = (parseInt(currentDiskSystem[9]) - parseInt(prevDiskSystem[9])) * 512 / timeDiff;
-
-            result.io.diskRead = Math.round(readBytesStorage + readBytesSystem);
-            result.io.diskWrite = Math.round(writeBytesStorage + writeBytesSystem);
-
-            const networkStats = data.netdev.find(line => line.startsWith(`${CONFIG.network.interface}:`));
+            const networkStats = data.netdev.find((line: string) => line.startsWith(`${CONFIG.network.interface}:`));
             
             const routeMetrics: { [key: string]: number } = {};
-            data.ipRoute.split('\n').reverse().forEach(line => {
+            data.ipRoute.split('\n').reverse().forEach((line: string) => {
                 const match = line.match(/dev\s+(\S+).*metric\s+(\d+)/);
                 if (match) {
                     routeMetrics[match[1]] = parseInt(match[2]);
@@ -243,7 +323,7 @@ export class SystemMonitor {
             result.io.isUsingBackup = isUsingBackup;
             result.io.routeMetrics = routeMetrics;
 
-            const prevNetworkStats = this.lastStats.netdev.find(line => line.startsWith(`${CONFIG.network.interface}:`));
+            const prevNetworkStats = this.lastStats.netdev.find((line: string) => line.startsWith(`${CONFIG.network.interface}:`));
 
             if (networkStats && prevNetworkStats) {
                 const [, rxBytes, rxPackets, , , , , , , txBytes, txPackets] = networkStats.split(/\s+/);
@@ -257,19 +337,19 @@ export class SystemMonitor {
 
 
                 // Prevent interface restart surprises 
-                if (parseInt(rxBytes) > parseInt(this.saneInfo.networkRxTotal)) {
-                    this.saneInfo.networkRxTotal = rxBytes;
+                if (parseInt(rxBytes) > this.saneInfo.networkRxTotal) {
+                    this.saneInfo.networkRxTotal = parseInt(rxBytes);
                 }
-                if (parseInt(txBytes) > parseInt(this.saneInfo.networkTxTotal)) {
-                    this.saneInfo.networkTxTotal = txBytes;
+                if (parseInt(txBytes) > this.saneInfo.networkTxTotal) {
+                    this.saneInfo.networkTxTotal = parseInt(txBytes);
                 }
                 result.io.networkRxTotal = this.saneInfo.networkRxTotal;
                 result.io.networkTxTotal = this.saneInfo.networkTxTotal;
                 // console.log(result.io, this.saneInfo);
             }
 
-            const backupNetworkStats = data.netdev.find(line => line.startsWith(`${CONFIG.network.backupInterface}:`));
-            const backupPrevNetworkStats = this.lastStats.netdev.find(line => line.startsWith(`${CONFIG.network.backupInterface}:`));
+            const backupNetworkStats = data.netdev.find((line: string) => line.startsWith(`${CONFIG.network.backupInterface}:`));
+            const backupPrevNetworkStats = this.lastStats.netdev.find((line: string) => line.startsWith(`${CONFIG.network.backupInterface}:`));
             if (backupNetworkStats && backupPrevNetworkStats) {
                 const [, rxBytes, rxPackets, , , , , , , txBytes, txPackets] = backupNetworkStats.split(/\s+/);
                 const [, prevRxBytes, prevRxPackets, , , , , , , prevTxBytes, prevTxPackets] = backupPrevNetworkStats.split(/\s+/);
@@ -294,11 +374,11 @@ export class SystemMonitor {
 
 
 
-    analyzeStorageHealth(smartData, btrfsData) {
+    analyzeStorageHealth(smartData: any, btrfsData: any) {
 
         let results = JSON.parse(JSON.stringify(STORAGE_HEALTH_RESULTS_TEMPLATE));
         // Helper function to add issues
-        const addIssue = (message, level) => {
+        const addIssue = (message: string, level: number) => {
             results.issues.push(message);
             results.status = Math.max(results.status, level);
         };
@@ -366,31 +446,33 @@ export class SystemMonitor {
         };
 
         // === BTRFS Analysis ===
-        const deviceStats = btrfsData["device-stats"][0];
+        if (btrfsData) {
+            const deviceStats = btrfsData["device-stats"][0];
 
-        results.metrics.filesystem = {
-            writeErrors: deviceStats.write_io_errs,
-            readErrors: deviceStats.read_io_errs,
-            flushErrors: deviceStats.flush_io_errs,
-            corruptionErrors: deviceStats.corruption_errs,
-            generationErrors: deviceStats.generation_errs
-        };
+            results.metrics.filesystem = {
+                writeErrors: deviceStats.write_io_errs,
+                readErrors: deviceStats.read_io_errs,
+                flushErrors: deviceStats.flush_io_errs,
+                corruptionErrors: deviceStats.corruption_errs,
+                generationErrors: deviceStats.generation_errs
+            };
 
-        // Check for any BTRFS errors
-        if (deviceStats.write_io_errs > 0) {
-            addIssue(`${deviceStats.write_io_errs} BTRFS write errors detected`, 2);
-        }
-        if (deviceStats.read_io_errs > 0) {
-            addIssue(`${deviceStats.read_io_errs} BTRFS read errors detected`, 2);
-        }
-        if (deviceStats.flush_io_errs > 0) {
-            addIssue(`${deviceStats.flush_io_errs} BTRFS flush errors detected`, 2);
-        }
-        if (deviceStats.corruption_errs > 0) {
-            addIssue(`${deviceStats.corruption_errs} BTRFS corruption errors detected`, 2);
-        }
-        if (deviceStats.generation_errs > 0) {
-            addIssue(`${deviceStats.generation_errs} BTRFS generation errors detected`, 2);
+            // Check for any BTRFS errors
+            if (deviceStats.write_io_errs > 0) {
+                addIssue(`${deviceStats.write_io_errs} BTRFS write errors detected`, 2);
+            }
+            if (deviceStats.read_io_errs > 0) {
+                addIssue(`${deviceStats.read_io_errs} BTRFS read errors detected`, 2);
+            }
+            if (deviceStats.flush_io_errs > 0) {
+                addIssue(`${deviceStats.flush_io_errs} BTRFS flush errors detected`, 2);
+            }
+            if (deviceStats.corruption_errs > 0) {
+                addIssue(`${deviceStats.corruption_errs} BTRFS corruption errors detected`, 2);
+            }
+            if (deviceStats.generation_errs > 0) {
+                addIssue(`${deviceStats.generation_errs} BTRFS generation errors detected`, 2);
+            }
         }
 
         // Set status description
@@ -400,23 +482,41 @@ export class SystemMonitor {
     }
 
 
-    async collectStorageInfo(section) {
-        let paths = this.storageInfo[section].paths;
+    async collectStorageInfo(label: string) {
+        const disk = (CONFIG.disks as any)[label];
+        if (!disk) return null;
+        const device = disk.device;
+        const mountPoint = disk.mountPoint;
+
+        // Check filesystem type
+        if (!this.fsTypes[mountPoint]) {
+            const { stdout: fsType } = await execAsync(`findmnt -n -o FSTYPE -T ${mountPoint}`);
+            this.fsTypes[mountPoint] = fsType.trim();
+        }
+        const isBtrfs = this.fsTypes[mountPoint] === 'btrfs';
+
+        const smartPromise = execAsync(`sudo smartctl ${device} -aj || true`);
+        const btrfsPromise = isBtrfs
+            ? execAsync(`sudo btrfs --format=json device stats ${mountPoint}`)
+            : Promise.resolve({ stdout: 'null', stderr: '' });
+
         const [
             { stdout: smart },
             { stdout: btrfsStats },
         ] = await Promise.all([
-            execAsync(`sudo smartctl ${paths[0]} -aj || true`),
-            execAsync(`sudo btrfs --format=json device stats ${paths[1]}`)
+            smartPromise,
+            btrfsPromise
         ])
         return this.analyzeStorageHealth(JSON.parse(smart), JSON.parse(btrfsStats));
     }
 
     async updateStorageInfo() {
-        for (let [section, storage] of Object.entries(this.storageInfo)) {
-            let info = await this.collectStorageInfo(section);
-            storage.info = info;
-            storage.lastUpdate = Date.now();
+        for (let [label, storage] of Object.entries(this.storageInfo)) {
+            let info = await this.collectStorageInfo(label);
+            if (info) {
+                storage.info = info;
+                storage.lastUpdate = Date.now();
+            }
         }
         return this.storageInfo;
     }

@@ -1,34 +1,79 @@
-import express from 'express';
-import { createServer } from 'http';
 import { Server } from 'socket.io';
+import { Server as Engine } from "@socket.io/bun-engine";
 import path from 'path';
 import { CONFIG } from './config';
 import { SystemMonitor } from './systemMonitor';
-import { NetworkMetrics } from './types';
+import { IOTMonitor } from './iotMonitor';
 
 export class AppServer {
-    private app = express();
-    private httpServer = createServer(this.app);
-    private io = new Server(this.httpServer, {
-        cors: {
-            origin: CONFIG.server.corsOrigin,
-            methods: CONFIG.server.corsMethods
-        }
-    });
+    private io;
     private systemMonitor = new SystemMonitor();
+    private iotMonitor = new IOTMonitor();
+    private engine: Engine;
 
     constructor() {
-        this.setupExpress();
+        this.io = new Server({
+            cors: {
+                origin: CONFIG.server.corsOrigin,
+                methods: CONFIG.server.corsMethods
+            }
+        });
+
+        this.engine = new Engine({
+            path: "/socket.io/",
+        });
+        this.io.bind(this.engine);
+
         this.setupSocketIO();
         this.setupMonitoring();
-        this.setupApiRoutes();
     }
 
-    private setupExpress() {
-        this.app.use(express.static(path.join(__dirname, 'public')));
-        this.app.get('/', (req, res) => {
-            res.sendFile(path.join(__dirname, 'public', 'index.html'));
-        });
+    private async handleRequest(req: Request) {
+        const url = new URL(req.url);
+        const pathname = url.pathname;
+
+        // API Routes
+        if (pathname === '/network-total') {
+            try {
+                const metrics = this.systemMonitor.getMetrics();
+                return Response.json({
+                    networkRxTotal: metrics?.io.networkRxTotal,
+                    networkTxTotal: metrics?.io.networkTxTotal,
+                    uptime: metrics?.uptime
+                });
+            } catch (error) {
+                return Response.json({ error: 'Failed to fetch system metrics' }, { status: 500 });
+            }
+        }
+
+        if (pathname === '/current') {
+            try {
+                const metrics = this.systemMonitor.getMetrics();
+                const storageInfo = this.systemMonitor.getStorageInfo();
+                const networkMetrics = JSON.parse(JSON.stringify(this.systemMonitor.getNetworkMetrics() || {}));
+                if (url.searchParams.get('secret') != process.env.SECRET) {
+                    delete networkMetrics.ip_history;
+                }
+                return Response.json({
+                    info: CONFIG.initInfo,
+                    metrics,
+                    networkMetrics,
+                    storageInfo,
+                    iotMetrics: this.iotMonitor.getCachedData()
+                });
+            } catch (error) {
+                return Response.json({ error: 'Failed to fetch system metrics' }, { status: 500 });
+            }
+        }
+
+        // Static Files
+        let filePath = path.join(__dirname, 'public', pathname === '/' ? 'index.html' : pathname);
+        const file = Bun.file(filePath);
+        if (await file.exists()) {
+            return new Response(file);
+        } else {
+            return new Response('Not Found', { status: 404 });
+        }
     }
 
     private setupSocketIO() {
@@ -37,7 +82,10 @@ export class AppServer {
             socket.emit('initInfo', CONFIG.initInfo);
             socket.emit('metrics', this.systemMonitor.getMetrics());
             socket.emit('storageInfo', { storageInfo: this.systemMonitor.getStorageInfo() });
-            socket.emit('networkMetrics', { networkMetrics: this.systemMonitor.getNetworkMetricsPartial() });
+            socket.emit('networkMetrics', {
+                networkMetrics: this.systemMonitor.getNetworkMetricsPartial(),
+                iotMetrics: this.iotMonitor.getCachedData()
+            });
 
             socket.on('disconnect', () => {
                 console.log('Client disconnected:', socket.id);
@@ -45,6 +93,8 @@ export class AppServer {
         });
     }
     private setupMonitoring() {
+        this.iotMonitor.start();
+
         (async () => {
             const metrics = await this.systemMonitor.updateMetrics();
             const networkMetrics = await this.systemMonitor.updateNetworkMetrics();
@@ -55,7 +105,10 @@ export class AppServer {
             while (true) {
                 try {
                     await this.systemMonitor.updateNetworkMetrics();
-                    this.io.emit('networkMetrics', { networkMetrics: this.systemMonitor.getNetworkMetricsPartial() });
+                    this.io.emit('networkMetrics', {
+                        networkMetrics: this.systemMonitor.getNetworkMetricsPartial(),
+                        iotMetrics: this.iotMonitor.getCachedData()
+                    });
                 } catch (e) {
                     console.error(e);
                 }
@@ -75,43 +128,19 @@ export class AppServer {
         }, 60000);
     }
 
-    private setupApiRoutes() {
-        this.app.get('/network-total', async (req, res) => {
-            try {
-                const metrics = this.systemMonitor.getMetrics();
-                res.json({
-                    networkRxTotal: metrics?.io.networkRxTotal,
-                    networkTxTotal: metrics?.io.networkTxTotal,
-                    uptime: metrics?.uptime
-                });
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to fetch system metrics' });
-            }
-        });
-
-        this.app.get('/current', (req, res) => {
-            try {
-                const metrics = this.systemMonitor.getMetrics();
-                const storageInfo = this.systemMonitor.getStorageInfo();
-                const networkMetrics = JSON.parse(JSON.stringify(this.systemMonitor.getNetworkMetrics()))
-                if (req.query.secret != process.env.SECRET) {
-                    delete networkMetrics.ip_history;
-                }
-                res.json({
-                    info: CONFIG.initInfo,
-                    metrics,
-                    networkMetrics,
-                    storageInfo
-                });
-            } catch (error) {
-                res.status(500).json({ error: 'Failed to fetch system metrics' });
-            }
-        });
-    }
-
     start() {
-        this.httpServer.listen(CONFIG.server.port, () => {
-            console.log(`Server running on http://localhost:${CONFIG.server.port}`);
+        const engineHandler = this.engine.handler();
+        Bun.serve({
+            port: CONFIG.server.port,
+            fetch: async (req, server) => {
+                const url = new URL(req.url);
+                if (url.pathname.startsWith("/socket.io/")) {
+                    return engineHandler.fetch(req, server);
+                }
+                return this.handleRequest(req);
+            },
+            websocket: engineHandler.websocket
         });
+        console.log(`Server running on http://localhost:${CONFIG.server.port}`);
     }
 }
