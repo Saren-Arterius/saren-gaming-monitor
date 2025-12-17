@@ -4,7 +4,7 @@
   "main": "index.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "npx tsx index.ts"
+    "start": "bun index.ts"
   },
   "author": "",
   "license": "ISC",

@@ -2,7 +2,7 @@ const SMALL_WIDTH = 540;
 const SMALL_HEIGHT = 420;
 const POWERSAVE_MS = 30000;
 const RELAX_BUFFER_MS = 995;
-const WAKE_WORD_SPEECH_TIMEOUT = 7000;
+const WAKE_WORD_SPEECH_TIMEOUT = 3000;
 const HA_URL = location.hostname.includes('direct2') ? 'https://ha-direct2.wtako.net' : 'https://ha-direct.wtako.net';
 const ASSETS_HOST = location.hostname.includes('direct2') ? 'https://monitor-direct2.wtako.net' : 'https://monitor-direct.wtako.net';
 const BASE = ASSETS_HOST; // Alias for assets host
@@ -249,9 +249,21 @@ const Gauge = ({ value, valueMB, valueGB, min = 0, max, label, className, feathe
         (gpuPwr ? `${store.pwr.gpu} W` : '') +
         (labelExtra || '');
     return (
-        <div className="gauge" style={{ width: gaugeSize, height: gaugeSize, cursor: clickFn ? 'pointer' : undefined }} onClick={() => {
-            clickFn && clickFn();
-        }}>
+        <div className="gauge"
+            style={{
+                width: gaugeSize,
+                height: gaugeSize,
+                cursor: clickFn ? 'pointer' : undefined,
+                transform: clickFn ? 'scale(1)' : undefined,
+                transition: clickFn ? 'transform 0.2s ease-in-out, filter 0.2s ease-in-out' : undefined
+            }}
+            onMouseEnter={window.matchMedia("(hover: hover) and (pointer: fine)").matches && clickFn ? (e) => { e.currentTarget.style.transform = 'scale(1.1)'; e.currentTarget.style.filter = 'brightness(1.2)'; } : undefined}
+            onMouseLeave={window.matchMedia("(hover: hover) and (pointer: fine)").matches && clickFn ? (e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.filter = 'brightness(1)'; } : undefined}
+            onTouchStart={clickFn ? (e) => { e.currentTarget.style.transform = 'scale(1.1)'; e.currentTarget.style.filter = 'brightness(1.2)'; } : undefined}
+            onTouchEnd={clickFn ? (e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.filter = 'brightness(1)'; } : undefined}
+            onClick={() => {
+                clickFn && clickFn();
+            }}>
             <div className="gauge-body">
                 <div>
                     <div className="gauge-fill"></div>
@@ -551,7 +563,7 @@ const Monitor = observer(() => {
                             paddingBottom: isSmallScreen ? 0 : 10,
                             width: '100%',
                             fontSize: infoFontSize,
-                            zIndex: -2
+                            zIndex: 0
                         }}>
                             <div style={{ fontSize: '1.5em', fontWeight: 600, zIndex: -2, color: COLOR_STOPS[loadLevel].color }}>
                                 {store.SYSTEM_INFO.hostname}
@@ -645,7 +657,7 @@ const Monitor = observer(() => {
                         store.alertExpire = 0;
                     }}>
                     <div className="container" style={{
-                        backgroundColor: '#232323f0',
+                        backgroundColor: 'rgba(0,0,0,0.9)',
                         paddingTop: 20,
                         paddingRight: 20,
                         paddingLeft: 20,
