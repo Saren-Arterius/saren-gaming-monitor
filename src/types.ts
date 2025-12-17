@@ -7,28 +7,31 @@ export interface LastStats {
     lastUpdate: number;
 }
 
+export interface SSDMetrics {
+    label: string;
+    name: string;
+    temperature: number;
+    temperatureLimit: { min: number; max: number };
+    usage: number;
+    usageGB: number;
+    diskRead: number;
+    diskWrite: number;
+}
+
 export interface SystemMetrics {
     temperatures: {
         cpu: number;
-        gpu: number;
-        ssd: number;
-        ssd2: number;
+        gpu?: number;
     };
     usage: {
         cpu?: number;
         gpu?: number;
         ram: number;
         vram?: number;
-        ssd: number;
-        ssd2: number;
     };
     usageMB: {
         ram: number;
         vram?: number;
-    };
-    usageGB: {
-        ssd: number;
-        ssd2: number;
     };
     io: {
         diskRead: number;
@@ -40,12 +43,19 @@ export interface SystemMetrics {
         networkRxTotal: number;
         networkTxTotal: number;
         activeConn: number;
+        backupNetworkPacketsRx: number;
+        backupNetworkPacketsTx: number;
+        backupNetworkRx: number;
+        backupNetworkTx: number;
+        isUsingBackup: boolean;
+        routeMetrics: { [key: string]: number };
     };
     fanSpeed: {
         cpu: number;
         motherboard: number;
         ssd: number;
     };
+    disks: { [label: string]: SSDMetrics };
     frequencies: {
         cpu: number[];
         gpuCore: number;
@@ -56,6 +66,35 @@ export interface SystemMetrics {
     system: string;
     uptime: number;
     lastUpdate: number;
+}
+
+export interface TrafficStats {
+    avg_rx_Bps: number;
+    avg_tx_Bps: number;
+    cum_rx: number;
+    cum_tx: number;
+}
+
+export interface NetworkTraffic {
+    historical: {
+        last12h: TrafficStats;
+        last15m: TrafficStats;
+        last1d: TrafficStats;
+        last1h: TrafficStats;
+        last1m: TrafficStats;
+        last30d: TrafficStats;
+        last3d: TrafficStats;
+        last3h: TrafficStats;
+        last5m: TrafficStats;
+        last7d: TrafficStats;
+    };
+    minute_history: Array<{
+        avg_rx_Bps: number;
+        avg_tx_Bps: number;
+        timestamp: string;
+        total_rx_in_minute: number;
+        total_tx_in_minute: number;
+    }>;
 }
 
 export interface NetworkMetrics {
@@ -91,148 +130,6 @@ export interface NetworkMetrics {
             packet_loss_percent: number;
         }>;
     };
-    network_traffic: {
-        historical: {
-            last12h: {
-                avg_rx_Bps: number;
-                avg_tx_Bps: number;
-                cum_rx: number;
-                cum_tx: number;
-            };
-            last15m: {
-                avg_rx_Bps: number;
-                avg_tx_Bps: number;
-                cum_rx: number;
-                cum_tx: number;
-            };
-            last1d: {
-                avg_rx_Bps: number;
-                avg_tx_Bps: number;
-                cum_rx: number;
-                cum_tx: number;
-            };
-            last1h: {
-                avg_rx_Bps: number;
-                avg_tx_Bps: number;
-                cum_rx: number;
-                cum_tx: number;
-            };
-            last1m: {
-                avg_rx_Bps: number;
-                avg_tx_Bps: number;
-                cum_rx: number;
-                cum_tx: number;
-            };
-            last30d: {
-                avg_rx_Bps: number;
-                avg_tx_Bps: number;
-                cum_rx: number;
-                cum_tx: number;
-            };
-            last3d: {
-                avg_rx_Bps: number;
-                avg_tx_Bps: number;
-                cum_rx: number;
-                cum_tx: number;
-            };
-            last3h: {
-                avg_rx_Bps: number;
-                avg_tx_Bps: number;
-                cum_rx: number;
-                cum_tx: number;
-            };
-            last5m: {
-                avg_rx_Bps: number;
-                avg_tx_Bps: number;
-                cum_rx: number;
-                cum_tx: number;
-            };
-            last7d: {
-                avg_rx_Bps: number;
-                avg_tx_Bps: number;
-                cum_rx: number;
-                cum_tx: number;
-            };
-        };
-        minute_history: Array<{
-            avg_rx_Bps: number;
-            avg_tx_Bps: number;
-            timestamp: string;
-            total_rx_in_minute: number;
-            total_tx_in_minute: number;
-        }>;
-    };
+    network_traffic: NetworkTraffic;
     last_updated: number;
-}
-
-export interface NetworkTraffic {
-    historical: {
-        last12h: {
-            avg_rx_Bps: number;
-            avg_tx_Bps: number;
-            cum_rx: number;
-            cum_tx: number;
-        };
-        last15m: {
-            avg_rx_Bps: number;
-            avg_tx_Bps: number;
-            cum_rx: number;
-            cum_tx: number;
-        };
-        last1d: {
-            avg_rx_Bps: number;
-            avg_tx_Bps: number;
-            cum_rx: number;
-            cum_tx: number;
-        };
-        last1h: {
-            avg_rx_Bps: number;
-            avg_tx_Bps: number;
-            cum_rx: number;
-            cum_tx: number;
-        };
-        last1m: {
-            avg_rx_Bps: number;
-            avg_tx_Bps: number;
-            cum_rx: number;
-            cum_tx: number;
-        };
-        last30d: {
-            avg_rx_Bps: number;
-            avg_tx_Bps: number;
-            cum_rx: number;
-            cum_tx: number;
-        };
-        last3d: {
-            avg_rx_Bps: number;
-            avg_tx_Bps: number;
-            cum_rx: number;
-            cum_tx: number;
-        };
-        last3h: {
-            avg_rx_Bps: number;
-            avg_tx_Bps: number;
-            cum_rx: number;
-            cum_tx: number;
-        };
-        last5m: {
-            avg_rx_Bps: number;
-            avg_tx_Bps: number;
-            cum_rx: number;
-            cum_tx: number;
-        };
-        last7d: {
-            avg_rx_Bps: number;
-            avg_tx_Bps: number;
-            cum_rx: number;
-            cum_tx: number;
-        };
-    };
-    minute_history: Array<{
-        avg_rx_Bps: number;
-        avg_tx_Bps: number;
-        timestamp: string;
-        total_rx_in_minute: number;
-        total_tx_in_minute: number;
-    }>;
 }

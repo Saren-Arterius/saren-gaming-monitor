@@ -39,20 +39,16 @@ export const CONFIG = {
             tempField: 'Tctl',
             tempInput: 'temp1_input'
         },
-        ssd: {
-            temperature: 'nvme-pci-0200',
-            tempField: 'Composite',
-            tempInput: 'temp1_input'
-        },
         fans: {
-            controller: 'nct6687-isa-0a20',
-            cpu: {
-                id: 'fan1',
-                input: 'fan1_input'
-            },
             motherboard: {
+                controller: 'nct6687-isa-0a20',
                 id: 'fan4',
                 input: 'fan4_input'
+            },
+            cpu: {
+                controller: 'nct6687-isa-0a20',
+                id: 'fan1',
+                input: 'fan1_input'
             }
         }
     },
@@ -88,7 +84,25 @@ export const CONFIG = {
         uptime: '/proc/uptime',
         loadavg: '/proc/loadavg'
     },
-
+    networkStatusAPI: null,
+    iotLeases: null,
+    disks: {
+        systemSSD: {
+            label: 'systemSSD',
+            name: 'System',
+            "device": "/dev/disk/by-id/nvme-SAMSUNG_MZVLB1T0HALR-00000_S3W6NY0M708431_1",
+            "mountPoint": "/",
+            "tempLimit": {
+                "min": 30,
+                "max": 70
+            },
+            "sensor": {
+                "temperature": "nvme-pci-0200",
+                "tempField": "Composite",
+                "tempInput": "temp1_input"
+            }
+        }
+    }
 };
 
 console.log(CONFIG.initInfo.SYSTEM_INFO)
