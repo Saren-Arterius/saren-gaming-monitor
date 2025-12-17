@@ -277,8 +277,8 @@ export class SystemMonitor {
                 routeMetrics: {},
             },
             fanSpeed: {
-                cpu: parseInt(data.sensors[CONFIG.sensors.fans.cpu.controller][CONFIG.sensors.fans.cpu.id][CONFIG.sensors.fans.cpu.input]),
-                ssd: parseInt(data.sensors[CONFIG.sensors.fans.systemSSD.controller][CONFIG.sensors.fans.systemSSD.id][CONFIG.sensors.fans.systemSSD.input])
+                cpu: !CONFIG.sensors.fans.cpu ? 0 : parseInt(data.sensors[CONFIG.sensors.fans.cpu.controller][CONFIG.sensors.fans.cpu.id][CONFIG.sensors.fans.cpu.input]),
+                ssd: !CONFIG.sensors.fans.systemSSD ? 0 : parseInt(data.sensors[CONFIG.sensors.fans.systemSSD.controller][CONFIG.sensors.fans.systemSSD.id][CONFIG.sensors.fans.systemSSD.input])
             },
             disks: disksMetrics,
             frequencies: {
@@ -307,7 +307,7 @@ export class SystemMonitor {
             result.usage.cpu = Math.round((1 - idleDiff / totalDiff) * 100);
 
             const networkStats = data.netdev.find((line: string) => line.startsWith(`${CONFIG.network.interface}:`));
-            
+
             const routeMetrics: { [key: string]: number } = {};
             data.ipRoute.split('\n').reverse().forEach((line: string) => {
                 const match = line.match(/dev\s+(\S+).*metric\s+(\d+)/);

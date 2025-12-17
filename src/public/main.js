@@ -1260,6 +1260,7 @@ const AlertOverlay = observer(() => {
 });
 
 const NetworkBars = observer(({ isSmallLandscape }) => {
+    if (!store.networkMetrics) return (<div></div>);
     console.log("NetworkBars");
     const minuteHistory = store.networkMetrics?.ping_statistics?.minute_history || [];
     const trafficHistory = store.networkMetrics?.network_traffic?.minute_history || [];
