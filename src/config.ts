@@ -49,7 +49,8 @@ export const CONFIG = {
                 controller: 'nct6687-isa-0a20',
                 id: 'fan1',
                 input: 'fan1_input'
-            }
+            },
+            systemSSD: null
         }
     },
     network: {

@@ -283,9 +283,9 @@ export class SystemMonitor {
                 routeMetrics: {},
             },
             fanSpeed: {
-                cpu: parseInt(data.sensors[CONFIG.sensors.fans.cpu.controller][CONFIG.sensors.fans.cpu.id][CONFIG.sensors.fans.cpu.input]),
-                motherboard: parseInt(data.sensors[CONFIG.sensors.fans.motherboard.controller][CONFIG.sensors.fans.motherboard.id][CONFIG.sensors.fans.motherboard.input]),
-                ssd: 0
+                cpu: !CONFIG.sensors.fans.cpu ? 0 : parseInt(data.sensors[CONFIG.sensors.fans.cpu.controller][CONFIG.sensors.fans.cpu.id][CONFIG.sensors.fans.cpu.input]),
+                motherboard: !CONFIG.sensors.fans.motherboard ? 0 : parseInt(data.sensors[CONFIG.sensors.fans.motherboard.controller][CONFIG.sensors.fans.motherboard.id][CONFIG.sensors.fans.motherboard.input]),
+                ssd: !CONFIG.sensors.fans.systemSSD ? 0 : parseInt(data.sensors[CONFIG.sensors.fans.systemSSD.controller][CONFIG.sensors.fans.systemSSD.id][CONFIG.sensors.fans.systemSSD.input])
             },
             disks: disksMetrics,
             frequencies: {
