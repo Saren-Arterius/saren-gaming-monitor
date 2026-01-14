@@ -6,7 +6,7 @@ export const CONFIG = {
             hostname: execSync("hostname").toString().trim(),
             os: execSync('uname -r').toString().trim(),
             cpu: 'AMD Ryzen 7 6800U',
-            case: 'Lenovo Yoga 7 Gen 7 14ARB7',
+            case: 'Lenovo Yoga 7 Gen 7',
         },
 
         GAUGE_LIMITS: {
