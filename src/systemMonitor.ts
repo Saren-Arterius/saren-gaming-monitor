@@ -215,17 +215,13 @@ export class SystemMonitor {
         const result: SystemMetrics = {
             temperatures: {
                 cpu: Math.round(parseFloat(data.sensors[CONFIG.sensors.cpu.temperature][CONFIG.sensors.cpu.tempField][CONFIG.sensors.cpu.tempInput])),
-                gpu: undefined,
             },
             usage: {
                 cpu: 0,
-                gpu: undefined,
                 ram: Math.round(memUsage * 100),
-                vram: undefined,
             },
             usageMB: {
                 ram: Math.round(memUsed),
-                vram: undefined,
             },
             io: {
                 diskRead: totalDiskRead,
@@ -253,6 +249,7 @@ export class SystemMonitor {
                 cpu: cpuMhzs
             },
             pwr: {
+                battery: Math.round(parseFloat(data.sensors[CONFIG.sensors.pwr.sensor][CONFIG.sensors.pwr.field][CONFIG.sensors.pwr.input]))
             },
             system,
             uptime: parseFloat(data.uptime),

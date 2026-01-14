@@ -13,6 +13,9 @@ export const CONFIG = {
             temperature: {
                 cpu: { min: 30, max: 90 },
             },
+            power: {
+                battery: { max: 45 }
+            },
             io: {
                 diskRead: { max: 1500 * 1024 * 1024 }, // PCIE 3.0 + PCIE 4.0 NVME SSD
                 diskWrite: { max: 1500 * 1024 * 1024 },
@@ -35,6 +38,11 @@ export const CONFIG = {
             "temperature": "k10temp-pci-00c3",
             "tempField": "Tctl",
             "tempInput": "temp1_input"
+        },
+        "pwr": {
+            "sensor": "BAT0-acpi-0",
+            "field": "power1",
+            "input": "power1_input"
         },
         "fans": {}
     },

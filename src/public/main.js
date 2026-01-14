@@ -119,7 +119,6 @@ class Store {
     SYSTEM_INFO = {
         hostname: "PC",
         cpu: "AMD",
-        gpu: "Nvidia",
         case: "PC Case",
         os: "Linux"
     };
@@ -127,7 +126,9 @@ class Store {
     GAUGE_LIMITS = {
         temperature: {
             cpu: { min: 30, max: 95 },
-            gpu: { min: 30, max: 80 }
+        },
+        power: {
+            battery: { max: 45 }
         },
         io: {
             diskRead: { max: 3.75 * 1024 * 1024 * 1024 },
@@ -152,17 +153,13 @@ class Store {
     storageInfo = {};
     temperatures = {
         cpu: 30,
-        gpu: 50
     };
     usage = {
         cpu: 34,
-        gpu: 50,
         ram: 35,
-        vram: 35
     };
     usageMB = {
         ram: 16384,
-        vram: 10240
     };
     disks = {};
     io = {
@@ -190,10 +187,9 @@ class Store {
     };
     frequencies = {
         cpu: [0],
-        gpuCore: 0
     };
     pwr = {
-        gpu: 0
+        battery: 0
     };
 
     firstDataPushedAt = 0;
@@ -369,8 +365,6 @@ const Gauge = ({
     featherName,
     small,
     cpuFreq,
-    gpuFreq,
-    gpuPwr,
     clickFn,
     textColor,
     textExtra,
@@ -384,6 +378,9 @@ const Gauge = ({
     if (pct > 75) pct = 75;
     let iconColor = getColorAtPercent(pct / 0.75);
     let valueExtra = { usage: "%", temperature: "°C" }[className] || "";
+    if (className === "usage" && label === "Power") {
+        valueExtra = " W";
+    }
     if (className === "io") value = formatBytes(value) + "/s";
 
     let gaugeSize = small ? 120 : undefined;
@@ -407,8 +404,7 @@ const Gauge = ({
         (cpuFreq
             ? `${Math.round(Math.min(...store.frequencies.cpu))}-${Math.round(Math.max(...store.frequencies.cpu))} MHz`
             : "") +
-        (gpuFreq ? `${store.frequencies.gpuCore} MHz` : "") +
-        (gpuPwr ? `${store.pwr.gpu} W` : "") +
+        (className === "usage" && label === "Power" ? `${value} W` : "") +
         (labelExtra || "");
     return (
         <div
@@ -1062,6 +1058,14 @@ const Monitor = observer(() => {
                             featherName="server"
                             small
                         />
+                        <Gauge
+                            value={store.pwr.battery}
+                            max={store.GAUGE_LIMITS.power.battery.max}
+                            label="Power"
+                            className="usage"
+                            featherName="zap"
+                            small
+                        />
                         {Object.values(store.disks).map((disk) => (
                             <Gauge
                                 key={disk.label}
@@ -1203,7 +1207,6 @@ const Monitor = observer(() => {
                                 {store.SYSTEM_INFO.hostname}
                             </div>
                             <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.cpu}</div>
-                            <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.gpu}</div>
                             <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.case}</div>
                             <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.os}</div>
                             <div style={{ fontWeight: 500, opacity: 0.8 }}>{store.system}</div>

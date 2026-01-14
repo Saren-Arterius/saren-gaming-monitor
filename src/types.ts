@@ -19,17 +19,13 @@ export interface SSDMetrics {
 export interface SystemMetrics {
     temperatures: {
         cpu: number;
-        gpu?: number;
     };
     usage: {
         cpu?: number;
-        gpu?: number;
         ram: number;
-        vram?: number;
     };
     usageMB: {
         ram: number;
-        vram?: number;
     };
     io: {
         diskRead: number;
@@ -55,10 +51,9 @@ export interface SystemMetrics {
     disks: { [label: string]: SSDMetrics };
     frequencies: {
         cpu: number[];
-        gpuCore?: number;
     };
     pwr: {
-        gpu?: number;
+        battery?: number;
     };
     system: string;
     uptime: number;
