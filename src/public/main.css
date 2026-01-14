@@ -61,7 +61,7 @@ body {
     border-radius: 50%;
     transform: rotate(-135deg);
     background: conic-gradient(#70CAD1 0%, #F7EE7F 37.5%, #A63D40 75%, transparent 0%);
-    /* filter: brightness(1.25); */
+    filter: brightness(1.25);
     z-index: 2;
 }
 
