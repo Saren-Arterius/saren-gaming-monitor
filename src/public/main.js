@@ -551,7 +551,7 @@ const FullScreenStatus = observer(() => {
                 }}
             >
                 <dotlottie-player
-                    src="/vendor/ai.lottie"
+                    src={ASSETS_HOST + "/vendor/ai.lottie"}
                     background="transparent"
                     speed={0.5}
                     style={{ width: "400px", height: "400px", filter }}
@@ -1788,7 +1788,7 @@ let HA_ASSIST_PIPELINE_NAME = null;
 function getStateName(stateValue) {
     return Object.keys(STATE).find((key) => STATE[key] === stateValue) || "UNKNOWN_STATE";
 }
-async function fetchAndCacheAudio(url, short) {
+async function fetchAndCacheAudio(url) {
     if (audioCache[url]) {
         return audioCache[url].cloneNode();
     }
@@ -1801,11 +1801,6 @@ async function fetchAndCacheAudio(url, short) {
         audioCache[url] = audio; // Cache the audio element
         audio.addEventListener('ended', () => URL.revokeObjectURL(audioUrl), { once: true });
         audio.addEventListener('error', () => URL.revokeObjectURL(audioUrl), { once: true });
-        if (short) {
-            setTimeout(() => {
-                delete audioCache[url];
-            }, 60000);
-        }
         return audio.cloneNode(); // Return a clone for playback
     } catch (e) {
         console.error('Failed to fetch and cache audio:', url, e);
@@ -1817,7 +1812,7 @@ async function playAudio(url) {
     let v = DAY_VOL;
     const currentHour = new Date().getHours();
     if (currentHour >= 23 || currentHour < 8) { // Between 11 PM and 8 AM
-        v = NIGHT_VOL;
+        // v = NIGHT_VOL;
     }
     try {
         const audio = await fetchAndCacheAudio(url);
@@ -1883,7 +1878,9 @@ function setVAState(newState, ...args) {
             }
 
             if (oldState >= STATE.WAKE_WORD_TRIGGERED) {
-                new Audio("/cancel.mp3").play().catch((e) => console.error("Error playing cancel.mp3:", e));
+                (async () => {
+                    (await fetchAndCacheAudio(BASE + "/cancel.mp3")).play().catch((e) => console.error("Error playing cancel.mp3:", e));
+                })();
             }
 
             if (bumblebee) {
@@ -1912,9 +1909,9 @@ function setVAState(newState, ...args) {
                 } else {
                     console.log("STATE.WAKE_WORD_TRIGGERED: VAD already listening.");
                 }
-
-                new Audio("/activate.mp3").play().catch((e) => console.error("Error playing activate.mp3:", e));
-
+                (async () => {
+                    (await fetchAndCacheAudio(BASE + "/activate.mp3")).play().catch((e) => console.error("Error playing activate.mp3:", e));
+                })();
                 wakeWordTimeoutId = setTimeout(() => {
                     if (store.vaState === STATE.WAKE_WORD_TRIGGERED && !pipelineActive) {
                         // No speech started
@@ -1964,8 +1961,9 @@ function setVAState(newState, ...args) {
                 setVAState(STATE.IDLE);
                 return;
             }
-            new Audio("/analyzing.mp3").play().catch((e) => console.error("Error playing analyzing.mp3:", e));
-
+            (async () => {
+                (await fetchAndCacheAudio(BASE + "/analyzing.mp3")).play().catch((e) => console.error("Error playing analyzing.mp3:", e));
+            })();
             console.log("STATE.SENDING_AUDIO: Waiting for Home Assistant response.");
             // VAD should have been paused by onSpeechEnd
             break;
