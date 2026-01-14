@@ -4,11 +4,13 @@ import path from 'path';
 import { CONFIG } from './config';
 import { SystemMonitor } from './systemMonitor';
 import { IOTMonitor } from './iotMonitor';
+import { InternetMonitor } from './internetMonitor';
 
 export class AppServer {
     private io;
     private systemMonitor = new SystemMonitor();
     private iotMonitor = new IOTMonitor();
+    private internetMonitor = new InternetMonitor();
     private engine: Engine;
 
     constructor() {
@@ -59,7 +61,8 @@ export class AppServer {
                     metrics,
                     networkMetrics,
                     storageInfo,
-                    iotMetrics: this.iotMonitor.getCachedData()
+                    iotMetrics: this.iotMonitor.getCachedData(),
+                    internetMetrics: this.internetMonitor.getCachedData()
                 });
             } catch (error) {
                 return Response.json({ error: 'Failed to fetch system metrics' }, { status: 500 });
@@ -84,7 +87,8 @@ export class AppServer {
             socket.emit('storageInfo', { storageInfo: this.systemMonitor.getStorageInfo() });
             socket.emit('networkMetrics', {
                 networkMetrics: this.systemMonitor.getNetworkMetricsPartial(),
-                iotMetrics: this.iotMonitor.getCachedData()
+                iotMetrics: this.iotMonitor.getCachedData(),
+                internetMetrics: this.internetMonitor.getCachedData()
             });
 
             socket.on('disconnect', () => {
@@ -95,6 +99,7 @@ export class AppServer {
 
     private setupMonitoring() {
         this.iotMonitor.start();
+        this.internetMonitor.start();
 
         (async () => {
             const metrics = await this.systemMonitor.updateMetrics();
@@ -106,7 +111,8 @@ export class AppServer {
                     await this.systemMonitor.updateNetworkMetrics();
                     this.io.emit('networkMetrics', {
                         networkMetrics: this.systemMonitor.getNetworkMetricsPartial(),
-                        iotMetrics: this.iotMonitor.getCachedData()
+                        iotMetrics: this.iotMonitor.getCachedData(),
+                        internetMetrics: this.internetMonitor.getCachedData()
                     });
                 } catch (e) {
                     console.error(e);

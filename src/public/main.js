@@ -35,7 +35,7 @@ const STORAGE_EXTRA_TEXT = [null, " ⚠️", " ⛔️"];
 
 // const { DotLottieReact } = dotlottie;
 const { useEffect, useState, useRef } = React;
-const { makeAutoObservable } = mobx;
+const { makeAutoObservable, autorun, reaction } = mobx;
 const { Observer, observer } = mobxReactLite;
 // const { Circle, Cpu, Activity } = require('react-feather');
 
@@ -78,15 +78,30 @@ const modalHeaderStyle = {
 };
 
 const Modal = ({ title, onClose, children, style }) => (
-    <div style={{ ...modalOverlayStyle, ...style }} onClick={onClose}>
-        <div className="container" style={modalContainerStyle} onClick={(e) => e.stopPropagation()}>
+    <div
+        style={{ ...modalOverlayStyle, ...style }}
+        onClick={(e) => {
+            // console.log('store.lastInteract = Date.now();')
+            store.lastInteract = Date.now();
+            onClose(e);
+        }}
+    >
+        <div
+            className="container"
+            style={modalContainerStyle}
+            onClick={(e) => {
+                // console.log('store.lastInteract = Date.now();')
+                store.lastInteract = Date.now();
+                e.stopPropagation();
+            }}
+        >
             <div style={modalHeaderStyle}>
                 <div style={{ fontSize: "1.2em", fontWeight: 600 }}>{title}</div>
                 <div style={{ cursor: "pointer", padding: 5, fontSize: "1.2em" }} onClick={onClose}>
                     ✕
                 </div>
             </div>
-            <div style={{ overflowY: "auto", padding: 20 }}>{children}</div>
+            <div style={{ overflowY: "auto", padding: 20, height: '100vh' }}>{children}</div>
         </div>
     </div>
 );
@@ -218,7 +233,7 @@ class Store {
     initInfo = null;
     networkMetrics = null;
     iotMetrics = [];
-    showIotModal = false;
+    internetMetrics = [];
     showNetworkModal = false;
     storageModalTarget = null; // 'system' | 'storage' | null
     iotExpandedDevices = {};
@@ -286,6 +301,13 @@ class Store {
 }
 
 const store = new Store();
+
+reaction(
+    () => store.lastInteract,
+    (lastInteract) => {
+        console.log("store.lastInteract updated:", lastInteract);
+    }
+);
 
 function getColorAtPercent(percent) {
     let start = COLOR_STOPS[0];
@@ -492,7 +514,7 @@ const Gauge = ({
 };
 
 const shouldPowerSave = () => {
-    if (store.showNetworkModal || store.showIotModal || store.storageModalTarget) return false;
+    if (store.showNetworkModal || store.storageModalTarget) return false;
     return Date.now() - store.lastInteract > POWERSAVE_MS;
 };
 
@@ -782,8 +804,52 @@ const StorageModal = observer(() => {
 
 const NetworkModal = observer(() => {
     const { shouldRender, style } = useModalTransition(store.showNetworkModal);
+
+    const [activeTab, setActiveTab] = useState(0); // 0: Traffic, 1: IoT, 2: Internet
+
     if (!shouldRender) return null;
 
+    const tabStyle = (isActive) => ({
+        padding: "10px 15px",
+        cursor: "pointer",
+        borderBottom: isActive ? "2px solid #70CAD1" : "2px solid transparent",
+        color: isActive ? "#70CAD1" : "#aaa",
+        fontWeight: isActive ? "600" : "400",
+        transition: "all 0.2s ease"
+    });
+
+    const closeAll = () => {
+        store.showNetworkModal = false;
+    };
+
+    const lastUpdated = store.networkMetrics?.last_updated;
+
+    return (
+        <Modal
+            title={
+                <div style={{ display: "flex", borderBottom: "1px solid #333", marginBottom: -21, marginTop: -20, marginLeft: -20 }}>
+                    <div style={tabStyle(activeTab === 0)} onClick={() => setActiveTab(0)}>Gateway</div>
+                    <div style={tabStyle(activeTab === 2)} onClick={() => setActiveTab(2)}>Web</div>
+                    <div style={tabStyle(activeTab === 1)} onClick={() => setActiveTab(1)}>IoT</div>
+                </div>
+            }
+            onClose={closeAll}
+            style={style}
+        >
+            {activeTab === 0 && <NetworkContent />}
+            {activeTab === 1 && <IoTContent />}
+            {activeTab === 2 && <InternetContent />}
+            <div style={{ opacity: 0.6, fontSize: "0.8em", textAlign: "right", position: 'fixed', bottom: '1em', right: '3em' }}>
+                Last updated: {formatTimeDiff(lastUpdated)}
+            </div>
+        </Modal>
+    );
+});
+
+const iotPingColor = (pAvg, pLoss) =>
+    getColorAtPercent(Math.min(100, Math.max((pAvg || 0) ** 1.5 / 50, pLoss || 0)));
+
+const NetworkContent = observer(() => {
     const pingMetrics = store.networkMetrics.ping_statistics;
     const trafficMetrics = store.networkMetrics.network_traffic;
     const formatShort = (date) =>
@@ -833,147 +899,113 @@ const NetworkModal = observer(() => {
     const numStyle = { ...tdStyle, textAlign: "right" };
 
     return (
-        <Modal title="Network Info" onClose={() => (store.showNetworkModal = false)} style={style}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-                <div
-                    style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        flexWrap: "wrap",
-                        gap: 10
-                    }}
-                >
-                    <div>
-                        Active Connections: <strong>{store.io.activeConn}</strong>
-                    </div>
-                    <div>
-                        Open Ports:{" "}
-                        <strong>
-                            {store.networkMetrics.internet_ports.map((s) => s.replace(/open/g, "").trim())?.join(", ") || "None"}
-                        </strong>
-                    </div>
-                </div>
-
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            <div
+                style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    flexWrap: "wrap",
+                    gap: 10
+                }}
+            >
                 <div>
-                    <div style={{ fontSize: "1.1em", fontWeight: 600, marginBottom: 5 }}>Ping Statistics</div>
-                    <table
-                        style={{
-                            width: "100%",
-                            borderCollapse: "collapse",
-                            fontSize: "0.9em"
-                        }}
-                    >
-                        <thead>
-                            <tr>
-                                <th style={thStyle}>Period</th>
-                                <th style={{ ...thStyle, textAlign: "right" }}>Latency</th>
-                                <th style={{ ...thStyle, textAlign: "right" }}>Packet Loss</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {pingPeriods.map((row) => {
-                                const lat = pingMetrics.latency[row.k];
-                                const loss = pingMetrics.packet_loss[row.k === "latest" ? "latest_percent" : row.k];
-                                return (
-                                    <tr key={row.l}>
-                                        <td style={{ ...tdStyle, width: "100%" }}>{row.l}</td>
-                                        <td style={numStyle}>{lat != null ? lat + "ms" : "N/A"}</td>
-                                        <td style={numStyle}>{loss != null ? loss + "%" : "N/A"}</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+                    Active Connections: <strong>{store.io.activeConn}</strong>
                 </div>
-
                 <div>
-                    <div style={{ fontSize: "1.1em", fontWeight: 600, marginBottom: 5 }}>Traffic History</div>
-                    <table
-                        style={{
-                            width: "100%",
-                            borderCollapse: "collapse",
-                            fontSize: "0.9em"
-                        }}
-                    >
-                        <thead>
-                            <tr>
-                                <th style={thStyle}>Time</th>
-                                <th style={{ ...thStyle, textAlign: "right" }}>RX Avg</th>
-                                <th style={{ ...thStyle, textAlign: "right" }}>RX Total</th>
-                                <th style={{ ...thStyle, textAlign: "right" }}>TX Avg</th>
-                                <th style={{ ...thStyle, textAlign: "right" }}>TX Total</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {trafficRows.map((row) => (
-                                <tr key={row.p}>
-                                    <td style={{ ...tdStyle, width: "100%" }}>{row.p}</td>
-                                    <td style={numStyle}>{row.rxAvg}</td>
-                                    <td style={numStyle}>{row.rxTot}</td>
-                                    <td style={numStyle}>{row.txAvg}</td>
-                                    <td style={numStyle}>{row.txTot}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-
-                <div>
-                    <div style={{ fontSize: "1.1em", fontWeight: 600, marginBottom: 5 }}>Recent Outages</div>
-                    {pingMetrics.outages.length === 0 ? (
-                        <div style={{ opacity: 0.6 }}>None in last 24 hours</div>
-                    ) : (
-                        <ul style={{ paddingLeft: 20, margin: 0, opacity: 0.8 }}>
-                            {pingMetrics.outages
-                                .slice()
-                                .reverse()
-                                .map((o, i) => (
-                                    <li key={i}>
-                                        {formatShort(new Date(o.start))} – {formatShort(new Date(o.end))} (
-                                        {Math.floor(o.duration_seconds / 60)}m{o.duration_seconds % 60}s)
-                                    </li>
-                                ))}
-                        </ul>
-                    )}
-                </div>
-
-                <div style={{ opacity: 0.6, fontSize: "0.8em", textAlign: "right" }}>
-                    Last updated: {formatTimeDiff(store.networkMetrics?.last_updated)}
-                </div>
-
-                <div style={{ display: "flex", justifyContent: "center", marginTop: 10 }}>
-                    <button
-                        style={{
-                            padding: "10px 20px",
-                            backgroundColor: "rgba(255,255,255,0.1)",
-                            borderRadius: 8,
-                            cursor: "pointer",
-                            border: "1px solid rgba(255,255,255,0.2)",
-                            color: "white",
-                            fontWeight: 600,
-                            fontSize: "1em"
-                        }}
-                        onClick={() => {
-                            store.iotExpandedDevices = {};
-                            store.showNetworkModal = false;
-                            store.showIotModal = true;
-                        }}
-                    >
-                        View IoT Device Metrics
-                    </button>
+                    Open Ports:{" "}
+                    <strong>
+                        {store.networkMetrics.internet_ports.map((s) => s.replace(/open/g, "").trim())?.join(", ") || "None"}
+                    </strong>
                 </div>
             </div>
-        </Modal>
+
+            <div>
+                <div style={{ fontSize: "1.1em", fontWeight: 600, marginBottom: 5 }}>Ping Statistics</div>
+                <table
+                    style={{
+                        width: "100%",
+                        borderCollapse: "collapse",
+                        fontSize: "0.9em"
+                    }}
+                >
+                    <thead>
+                        <tr>
+                            <th style={thStyle}>Period</th>
+                            <th style={{ ...thStyle, textAlign: "right" }}>Latency</th>
+                            <th style={{ ...thStyle, textAlign: "right" }}>Packet Loss</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {pingPeriods.map((row) => {
+                            const lat = pingMetrics.latency[row.k];
+                            const loss = pingMetrics.packet_loss[row.k === "latest" ? "latest_percent" : row.k];
+                            return (
+                                <tr key={row.l}>
+                                    <td style={{ ...tdStyle, width: "100%" }}>{row.l}</td>
+                                    <td style={numStyle}>{lat != null ? lat + "ms" : "N/A"}</td>
+                                    <td style={numStyle}>{loss != null ? loss + "%" : "N/A"}</td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+
+            <div>
+                <div style={{ fontSize: "1.1em", fontWeight: 600, marginBottom: 5 }}>Traffic History</div>
+                <table
+                    style={{
+                        width: "100%",
+                        borderCollapse: "collapse",
+                        fontSize: "0.9em"
+                    }}
+                >
+                    <thead>
+                        <tr>
+                            <th style={thStyle}>Time</th>
+                            <th style={{ ...thStyle, textAlign: "right" }}>RX Avg</th>
+                            <th style={{ ...thStyle, textAlign: "right" }}>RX Total</th>
+                            <th style={{ ...thStyle, textAlign: "right" }}>TX Avg</th>
+                            <th style={{ ...thStyle, textAlign: "right" }}>TX Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {trafficRows.map((row) => (
+                            <tr key={row.p}>
+                                <td style={{ ...tdStyle, width: "100%" }}>{row.p}</td>
+                                <td style={numStyle}>{row.rxAvg}</td>
+                                <td style={numStyle}>{row.rxTot}</td>
+                                <td style={numStyle}>{row.txAvg}</td>
+                                <td style={numStyle}>{row.txTot}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            <div>
+                <div style={{ fontSize: "1.1em", fontWeight: 600, marginBottom: 5 }}>Recent Outages</div>
+                {pingMetrics.outages.length === 0 ? (
+                    <div style={{ opacity: 0.6 }}>None in last 24 hours</div>
+                ) : (
+                    <ul style={{ paddingLeft: 20, margin: 0, opacity: 0.8 }}>
+                        {pingMetrics.outages
+                            .slice()
+                            .reverse()
+                            .map((o, i) => (
+                                <li key={i}>
+                                    {formatShort(new Date(o.start))} – {formatShort(new Date(o.end))} (
+                                    {Math.floor(o.duration_seconds / 60)}m{o.duration_seconds % 60}s)
+                                </li>
+                            ))}
+                    </ul>
+                )}
+            </div>
+        </div>
     );
 });
 
-const iotPingColor = (pAvg, pLoss) =>
-    getColorAtPercent(Math.min(100, Math.max((pAvg || 0) ** 1.5 / 50, pLoss || 0)));
-
-const IoTModal = observer(() => {
-    const { shouldRender, style } = useModalTransition(store.showIotModal);
-    if (!shouldRender) return null;
-
+const InternetContent = observer(() => {
     const tdStyle = { padding: "8px", borderBottom: "1px solid #222" };
     const thStyle = {
         padding: "8px",
@@ -984,7 +1016,246 @@ const IoTModal = observer(() => {
         opacity: 0.7
     };
     return (
-        <Modal title="IoT Device Metrics" onClose={() => (store.showIotModal = false)} style={style}>
+        <>
+            {store.internetMetrics &&
+                store.internetMetrics.map((server) => {
+                    const isExpanded = store.iotExpandedDevices && store.iotExpandedDevices[server.id];
+                    const currentStat = server.stats?.["15m"];
+                    const currentAvg = currentStat ? currentStat[3] : null;
+                    const currentLoss = currentStat ? currentStat[0] : null;
+
+                    return (
+                        <div
+                            key={server.id}
+                            style={{
+                                marginBottom: 15,
+                                backgroundColor: "#1a1a1a",
+                                borderRadius: 8,
+                                overflow: "hidden",
+                                border: "1px solid #2a2a2a"
+                            }}
+                        >
+                            <div
+                                style={{
+                                    padding: 15,
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: 10
+                                }}
+                                onClick={() => {
+                                    store.iotExpandedDevices = {
+                                        ...(store.iotExpandedDevices || {}),
+                                        [server.id]: !isExpanded
+                                    };
+                                }}
+                            >
+                                <div
+                                    style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        alignItems: "center"
+                                    }}
+                                >
+                                    <div>
+                                        <div style={{ fontWeight: 600, color: "#eee" }}>
+                                            {server.hostname}
+                                        </div>
+                                        <div style={{ fontSize: "0.8em", opacity: 0.6, marginTop: 2 }}>
+                                            {server.address}
+                                        </div>
+                                    </div>
+                                    <div
+                                        style={{
+                                            fontSize: "0.9em",
+                                            opacity: 0.8,
+                                            textAlign: "right"
+                                        }}
+                                    >
+                                        {currentStat ? (
+                                            <>
+                                                <span style={{ color: iotPingColor(currentAvg, currentLoss) }}>
+                                                    {currentAvg}ms
+                                                </span>
+                                                <br />
+                                                <span style={{ fontSize: "0.8em", opacity: 0.7 }}>{currentLoss}% loss</span>
+                                            </>
+                                        ) : (
+                                            <span style={{ opacity: 0.4 }}>N/A</span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div
+                                    style={{
+                                        display: "flex",
+                                        height: 6,
+                                        width: "100%",
+                                        borderRadius: 3,
+                                        overflow: "hidden",
+                                        gap: 0,
+                                        backgroundColor: "#111"
+                                    }}
+                                >
+                                    {server.history &&
+                                        server.history.slice(-30).map((stat, i, arr) => {
+                                            const avg = stat[3];
+                                            const loss = stat[0];
+                                            const color = iotPingColor(avg, loss);
+                                            return (
+                                                <div
+                                                    key={i}
+                                                    title={`${avg}ms`}
+                                                    style={{
+                                                        flex: 1,
+                                                        backgroundColor: color,
+                                                        opacity: 0.2 + 0.8 * (i / arr.length)
+                                                    }}
+                                                ></div>
+                                            );
+                                        })}
+                                </div>
+                            </div>
+                            {isExpanded && (
+                                <div
+                                    style={{
+                                        padding: "0 15px 15px 15px",
+                                        fontSize: "0.85em",
+                                        borderTop: "1px solid #2a2a2a",
+                                        marginTop: -5,
+                                        paddingTop: 10
+                                    }}
+                                >
+                                    <table
+                                        style={{
+                                            width: "100%",
+                                            borderCollapse: "collapse",
+                                            opacity: 0.9
+                                        }}
+                                    >
+                                        <thead>
+                                            <tr
+                                                style={{
+                                                    borderBottom: "1px solid #333",
+                                                    textAlign: "left",
+                                                    color: "#000"
+                                                }}
+                                            >
+                                                <th style={{ ...thStyle }}>Period</th>
+                                                <th
+                                                    style={{
+                                                        ...thStyle,
+                                                        textAlign: "right"
+                                                    }}
+                                                >
+                                                    Ping (Avg)
+                                                </th>
+                                                <th
+                                                    style={{
+                                                        ...thStyle,
+                                                        textAlign: "right"
+                                                    }}
+                                                >
+                                                    Loss
+                                                </th>
+                                                <th
+                                                    style={{
+                                                        ...thStyle,
+                                                        textAlign: "right"
+                                                    }}
+                                                >
+                                                    Min / Max
+                                                </th>
+                                                <th
+                                                    style={{
+                                                        ...thStyle,
+                                                        textAlign: "right"
+                                                    }}
+                                                >
+                                                    Jitter
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {["1m", "5m", "15m", "1h", "3h", "12h", "24h"].map((k) => {
+                                                const stat = server.stats?.[k];
+                                                if (!stat) return null;
+                                                return (
+                                                    <tr key={k} style={{ borderBottom: "1px solid #222" }}>
+                                                        <td
+                                                            style={{
+                                                                ...tdStyle,
+                                                                width: "100%",
+                                                                color: k === "1m" ? "#fff" : "#aaa"
+                                                            }}
+                                                        >
+                                                            {k}
+                                                        </td>
+                                                        <td style={{ ...tdStyle, textAlign: "right" }}>{stat[3]}ms</td>
+                                                        <td
+                                                            style={{
+                                                                ...tdStyle,
+                                                                textAlign: "right",
+                                                                color: stat[0] > 0 ? "#ff5555" : "inherit"
+                                                            }}
+                                                        >
+                                                            {stat[0]}%
+                                                        </td>
+                                                        <td
+                                                            style={{
+                                                                ...tdStyle,
+                                                                textAlign: "right",
+                                                                opacity: 0.7
+                                                            }}
+                                                        >
+                                                            {stat[1]}ms / {stat[2]}ms
+                                                        </td>
+                                                        <td
+                                                            style={{
+                                                                ...tdStyle,
+                                                                textAlign: "right",
+                                                                opacity: 0.7
+                                                            }}
+                                                        >
+                                                            {stat[4]}ms
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            {(!store.internetMetrics || store.internetMetrics.length === 0) && (
+                <div
+                    style={{
+                        padding: 40,
+                        textAlign: "center",
+                        opacity: 0.5,
+                        fontStyle: "italic"
+                    }}
+                >
+                    No internet servers are currently being monitored.
+                </div>
+            )}
+        </>
+    );
+});
+
+const IoTContent = observer(() => {
+    const tdStyle = { padding: "8px", borderBottom: "1px solid #222" };
+    const thStyle = {
+        padding: "8px",
+        textAlign: "left",
+        borderBottom: "1px solid #444",
+        fontSize: "0.9em",
+        color: "#000",
+        opacity: 0.7
+    };
+    return (
+        <>
             {store.iotMetrics &&
                 store.iotMetrics.map((device) => {
                     const isExpanded = store.iotExpandedDevices && store.iotExpandedDevices[device.mac];
@@ -1208,7 +1479,7 @@ const IoTModal = observer(() => {
                     No IoT devices are currently being monitored.
                 </div>
             )}
-        </Modal>
+        </>
     );
 });
 
@@ -1417,6 +1688,63 @@ const NetworkBars = observer(({ isSmallLandscape }) => {
         </div>
     );
 });
+
+const FullscreenButton = () => {
+    const [isFullscreen, setIsFullscreen] = useState(!!document.fullscreenElement);
+
+    useEffect(() => {
+        const handler = () => setIsFullscreen(!!document.fullscreenElement);
+        document.addEventListener("fullscreenchange", handler);
+        return () => document.removeEventListener("fullscreenchange", handler);
+    }, []);
+
+    const toggleFullscreen = (e) => {
+        e.stopPropagation();
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen();
+        } else if (document.exitFullscreen) {
+            document.exitFullscreen();
+        }
+        store.lastInteract = Date.now();
+    };
+
+    if (isFullscreen) return null;
+    if (store.showNetworkModal || store.storageModalTarget) return null;
+
+    return (
+        <div
+            onClick={toggleFullscreen}
+            style={{
+                position: "fixed",
+                right: "20px",
+                bottom: "20px",
+                width: "50px",
+                height: "50px",
+                backgroundColor: "rgba(0, 0, 0, 0.5)",
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "24px",
+                cursor: "pointer",
+                zIndex: 100,
+                backdropFilter: "blur(4px)",
+                userSelect: "none",
+                transition: "transform 0.2s ease, opacity 0.2s ease"
+            }}
+            onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "scale(1.1)";
+                e.currentTarget.style.backgroundColor = "rgba(0, 0, 0, 0.8)";
+            }}
+            onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "scale(1)";
+                e.currentTarget.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
+            }}
+        >
+            🖼
+        </div>
+    );
+};
 
 const Monitor = observer(() => {
     let loadLevel = 0;
@@ -1675,12 +2003,12 @@ const Monitor = observer(() => {
             {!shouldPowerSave() && (
                 <>
                     <NetworkModal />
-                    <IoTModal />
                     <StorageModal />
                     <AlertOverlay />
                 </>
             )}
             <FullScreenStatus />
+            <FullscreenButton />
         </>
     );
 });
@@ -1754,6 +2082,7 @@ socket.on("initInfo", saveToMobxStore("initInfo"));
 socket.on("metrics", saveToMobxStore("metrics"));
 socket.on("networkMetrics", saveToMobxStore("networkMetrics"));
 socket.on("iotMetrics", saveToMobxStore("iotMetrics"));
+socket.on("internetMetrics", saveToMobxStore("internetMetrics"));
 
 socket.on("connect", () => console.log("Connected to server"));
 
@@ -2718,11 +3047,12 @@ setInterval(() => {
     }
 }, 1000);
 
-document.querySelector("body").addEventListener("click", (e) => {
-    document.querySelector("body").requestFullscreen();
+document.querySelector("html").addEventListener("click", (e) => {
+    // console.log('store.lastInteract = Date.now();')
     store.lastInteract = Date.now();
 });
 
-document.querySelector("body").addEventListener("touchstart", (e) => {
+document.querySelector("html").addEventListener("touchstart", (e) => {
+    // console.log('store.lastInteract = Date.now();')
     store.lastInteract = Date.now();
 });
