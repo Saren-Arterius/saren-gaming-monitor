@@ -42,7 +42,9 @@ const modalOverlayStyle = {
 };
 
 const modalContainerStyle = {
-    backgroundColor: "#111",
+    backgroundColor: "rgba(255,255,255,0.05)",
+
+    // backgroundColor: "#111",
     width: "90%",
     maxWidth: 800,
     maxHeight: "90vh",
@@ -50,7 +52,7 @@ const modalContainerStyle = {
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
-    border: "1px solid #333",
+    border: "1px solid rgba(255, 255, 255, 0.1)",
     boxShadow: "0 10px 30px rgba(0,0,0,0.5)"
 };
 
@@ -60,7 +62,7 @@ const modalHeaderStyle = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#1a1a1a"
+    // backgroundColor: "#1a1a1a"
 };
 
 const Modal = ({ title, onClose, children, style }) => (
@@ -701,10 +703,10 @@ const StorageHeader = observer(({ section }) => {
         <div
             style={{
                 marginBottom: 15,
-                backgroundColor: "rgb(26, 26, 26)",
+                // backgroundColor: "rgb(26, 26, 26)",
                 borderRadius: 8,
                 overflow: "hidden",
-                border: "1px solid rgb(42, 42, 42)",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
                 padding: 15,
                 display: "flex",
                 flexDirection: isSmallScreen ? "column" : "row",
