@@ -96,15 +96,16 @@ export class AppServer {
             });
         });
     }
-
     private setupMonitoring() {
         this.iotMonitor.start().catch(e => console.error("Failed to start IOTMonitor", e));
         this.internetMonitor.start().catch(e => console.error("Failed to start InternetMonitor", e));
 
         (async () => {
             const metrics = await this.systemMonitor.updateMetrics();
+            const networkMetrics = await this.systemMonitor.updateNetworkMetrics();
             const storageInfo = await this.systemMonitor.updateStorageInfo();
             console.log(metrics);
+            console.log(networkMetrics);
             console.log(JSON.stringify(storageInfo, null, 2));
             while (true) {
                 try {
@@ -123,9 +124,9 @@ export class AppServer {
 
         setInterval(async () => {
             const metrics = await this.systemMonitor.updateMetrics();
-            // console.log(metrics);
             this.io.emit('metrics', metrics);
         }, 1000);
+
         setInterval(async () => {
             const storageInfo = await this.systemMonitor.updateStorageInfo();
             console.log(storageInfo);

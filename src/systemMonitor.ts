@@ -14,7 +14,6 @@ async function execAsync(command: string): Promise<{ stdout: string, stderr: str
 
 const STORAGE_HEALTH_RESULTS_TEMPLATE = {
     status: 0, // 0 = normal, 1 = warning, 2 = critical
-    statusText: 'Normal',
     issues: [],
     metrics: {
         smart: {},
@@ -58,12 +57,8 @@ export class SystemMonitor {
     }
 
     async updateMetrics() {
-        try {
-            const data = await this.collectData();
-            this.metrics = this.transformSystemInfo(data);
-        } catch (error) {
-            console.error('Error updating system metrics:', error);
-        }
+        const data = await this.collectData();
+        this.metrics = this.transformSystemInfo(data);
         return this.metrics;
     }
 
@@ -110,7 +105,6 @@ export class SystemMonitor {
         const dfCommands = disks.map(disk => `df -ml ${disk.mountPoint} | tail -n 1`);
 
         const commands = [
-            `${CONFIG.commands.nvidia.command} ${CONFIG.commands.nvidia.params} ${CONFIG.commands.nvidia.format}`,
             ...dfCommands,
             "ss -tuna state established | grep -v '127.0.0.1' | grep -v '::1' | wc -l",
             "ip route | grep metric | grep default"
@@ -129,9 +123,8 @@ export class SystemMonitor {
         const commandResults = rest.slice(0, commands.length) as { stdout: string, stderr: string }[];
         const fileResults = rest.slice(commands.length) as string[];
 
-        const gpuResult = commandResults[0];
-        const dfResults = commandResults.slice(1, 1 + dfCommands.length).map(r => r.stdout.trim().split(/\s+/));
-        const otherCommandResults = commandResults.slice(1 + dfCommands.length);
+        const dfResults = commandResults.slice(0, dfCommands.length).map(r => r.stdout.trim().split(/\s+/));
+        const otherCommandResults = commandResults.slice(dfCommands.length);
 
         const storageStats: { [key: string]: string[] } = {};
         disks.forEach((disk, index) => {
@@ -139,7 +132,6 @@ export class SystemMonitor {
         });
 
         return {
-            gpu: gpuResult.stdout.split(',').map(str => str.trim()),
             sensors: JSON.parse(sensorResult.stdout),
             storageStats,
             activeConn: otherCommandResults[0].stdout.trim(),
@@ -149,10 +141,8 @@ export class SystemMonitor {
             diskstats: fileResults[2].split('\n'),
             netdev: fileResults[3].split('\n').map(l => l.trim()),
             cpuinfo: fileResults[4].split('\n'),
-            ib_rcv: fileResults[5].trim(),
-            ib_xmit: fileResults[6].trim(),
-            uptime: fileResults[7].trim(),
-            loadavg: fileResults[8].trim()
+            uptime: fileResults[5].trim(),
+            loadavg: fileResults[6].trim()
         };
     }
 
@@ -178,12 +168,15 @@ export class SystemMonitor {
         let cpuMhzs = data.cpuinfo.filter((l: string) => l.startsWith('cpu MHz')).map((s: string) => parseFloat(s.split(':')[1]));
 
         const formattedUptime = this.formatUptime(parseFloat(data.uptime));
+        // Read load averages
+        // console.log(data.loadavg);
         const loadavg = data.loadavg
             .split(' ')
             .slice(0, 3)
             .map((num: string) => parseFloat(num).toFixed(2))
             .join(' ');
 
+        // Combine the information in required format
         let system = `${formattedUptime} | ${loadavg}`;
 
         const disksMetrics: { [label: string]: SSDMetrics } = {};
@@ -253,17 +246,17 @@ export class SystemMonitor {
         const result: SystemMetrics = {
             temperatures: {
                 cpu: Math.round(parseFloat(data.sensors[CONFIG.sensors.cpu.temperature][CONFIG.sensors.cpu.tempField][CONFIG.sensors.cpu.tempInput])),
-                gpu: parseFloat(data.gpu[1]),
+                gpu: undefined,
             },
             usage: {
                 cpu: 0,
-                gpu: parseInt(data.gpu[2]),
+                gpu: undefined,
                 ram: Math.round(memUsage * 100),
-                vram: Math.round(parseInt(data.gpu[3]) / parseInt(data.gpu[4]) * 100)
+                vram: undefined,
             },
             usageMB: {
                 ram: Math.round(memUsed),
-                vram: parseInt(data.gpu[3])
+                vram: undefined,
             },
             io: {
                 diskRead: totalDiskRead,
@@ -275,6 +268,7 @@ export class SystemMonitor {
                 networkRxTotal: 0,
                 networkTxTotal: 0,
                 activeConn: parseInt(data.activeConn),
+
                 backupNetworkPacketsRx: 0,
                 backupNetworkPacketsTx: 0,
                 backupNetworkRx: 0,
@@ -284,16 +278,13 @@ export class SystemMonitor {
             },
             fanSpeed: {
                 cpu: !CONFIG.sensors.fans.cpu ? 0 : parseInt(data.sensors[CONFIG.sensors.fans.cpu.controller][CONFIG.sensors.fans.cpu.id][CONFIG.sensors.fans.cpu.input]),
-                motherboard: !CONFIG.sensors.fans.motherboard ? 0 : parseInt(data.sensors[CONFIG.sensors.fans.motherboard.controller][CONFIG.sensors.fans.motherboard.id][CONFIG.sensors.fans.motherboard.input]),
                 ssd: !CONFIG.sensors.fans.systemSSD ? 0 : parseInt(data.sensors[CONFIG.sensors.fans.systemSSD.controller][CONFIG.sensors.fans.systemSSD.id][CONFIG.sensors.fans.systemSSD.input])
             },
             disks: disksMetrics,
             frequencies: {
-                cpu: cpuMhzs,
-                gpuCore: parseInt(data.gpu[5]),
+                cpu: cpuMhzs
             },
             pwr: {
-                gpu: parseFloat(data.gpu[6]),
             },
             system,
             uptime: parseFloat(data.uptime),
@@ -324,7 +315,10 @@ export class SystemMonitor {
                     routeMetrics[match[1]] = parseInt(match[2]);
                 }
             });
+            // console.log({routeMetrics});
 
+            // const isUsingBackup = (!routeMetrics[CONFIG.network.interface] && !!routeMetrics[CONFIG.network.backupInterface]) || 
+            //     routeMetrics[CONFIG.network.backupInterface] < routeMetrics[CONFIG.network.interface];
             const isUsingBackup = routeMetrics[CONFIG.network.backupInterface] < 1000;
             result.io.isUsingBackup = isUsingBackup;
             result.io.routeMetrics = routeMetrics;
@@ -335,17 +329,14 @@ export class SystemMonitor {
                 const [, rxBytes, rxPackets, , , , , , , txBytes, txPackets] = networkStats.split(/\s+/);
                 const [, prevRxBytes, prevRxPackets, , , , , , , prevTxBytes, prevTxPackets] = prevNetworkStats.split(/\s+/);
 
-                let ibRx = Math.round(((parseInt(data.ib_rcv) * 4) - (parseInt(this.lastStats.ib_rcv) * 4)) / timeDiff);
-                let ibTx = Math.round(((parseInt(data.ib_xmit) * 4) - (parseInt(this.lastStats.ib_xmit) * 4)) / timeDiff);
-
-                result.io.networkRx = Math.round((parseInt(rxBytes) - parseInt(prevRxBytes)) / timeDiff) + ibRx;
-                result.io.networkTx = Math.round((parseInt(txBytes) - parseInt(prevTxBytes)) / timeDiff) + ibTx;
+                result.io.networkRx = Math.round((parseInt(rxBytes) - parseInt(prevRxBytes)) / timeDiff);
+                result.io.networkTx = Math.round((parseInt(txBytes) - parseInt(prevTxBytes)) / timeDiff);
 
                 result.io.networkPacketsRx = Math.round((parseInt(rxPackets) - parseInt(prevRxPackets)) / timeDiff);
                 result.io.networkPacketsTx = Math.round((parseInt(txPackets) - parseInt(prevTxPackets)) / timeDiff);
 
 
-                // Prevent interface restart surprises
+                // Prevent interface restart surprises 
                 if (parseInt(rxBytes) > this.saneInfo.networkRxTotal) {
                     this.saneInfo.networkRxTotal = parseInt(rxBytes);
                 }
@@ -354,13 +345,14 @@ export class SystemMonitor {
                 }
                 result.io.networkRxTotal = this.saneInfo.networkRxTotal;
                 result.io.networkTxTotal = this.saneInfo.networkTxTotal;
+                // console.log(result.io, this.saneInfo);
             }
 
             const backupNetworkStats = data.netdev.find((line: string) => line.startsWith(`${CONFIG.network.backupInterface}:`));
             const backupPrevNetworkStats = this.lastStats.netdev.find((line: string) => line.startsWith(`${CONFIG.network.backupInterface}:`));
             if (backupNetworkStats && backupPrevNetworkStats) {
-                const [, rxBytes, rxPackets, , , , , , txBytes, txPackets] = backupNetworkStats.split(/\s+/);
-                const [, prevRxBytes, prevRxPackets, , , , , , prevTxBytes, prevTxPackets] = backupPrevNetworkStats.split(/\s+/);
+                const [, rxBytes, rxPackets, , , , , , , txBytes, txPackets] = backupNetworkStats.split(/\s+/);
+                const [, prevRxBytes, prevRxPackets, , , , , , , prevTxBytes, prevTxPackets] = backupPrevNetworkStats.split(/\s+/);
 
                 result.io.backupNetworkRx = Math.round((parseInt(rxBytes) - parseInt(prevRxBytes)) / timeDiff);
                 result.io.backupNetworkTx = Math.round((parseInt(txBytes) - parseInt(prevTxBytes)) / timeDiff);
@@ -374,10 +366,9 @@ export class SystemMonitor {
             stat: [...data.stat],
             diskstats: [...data.diskstats],
             netdev: [...data.netdev],
-            ib_rcv: data.ib_rcv,
-            ib_xmit: data.ib_xmit,
             lastUpdate: now
         };
+
         return result;
     }
 
@@ -424,6 +415,7 @@ export class SystemMonitor {
         }
 
         // Media Errors
+        // health.media_errors = 1; // troll
         results.metrics.smart.mediaErrors = {
             count: health.media_errors,
             formatted: `${health.media_errors} media errors`
@@ -445,12 +437,12 @@ export class SystemMonitor {
 
         results.metrics.smart.dataWritten = {
             units: health.data_units_written,
-            formatted: `${(health.data_units_written * 512000 / (1024 * 1024 * 1024 * 1024)).toFixed(2)} TB written`
+            formatted: `${(health.data_units_written * 512000 / (1000 ** 4)).toFixed(2)} TB written`
         };
 
         results.metrics.smart.dataRead = {
             units: health.data_units_read,
-            formatted: `${(health.data_units_read * 512000 / (1024 * 1024 * 1024 * 1024)).toFixed(2)} TB read`
+            formatted: `${(health.data_units_read * 512000 / (1000 ** 4)).toFixed(2)} TB read`
         };
 
         // === BTRFS Analysis ===

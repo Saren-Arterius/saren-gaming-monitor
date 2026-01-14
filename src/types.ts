@@ -2,8 +2,6 @@ export interface LastStats {
     stat: string[];
     diskstats: string[];
     netdev: string[];
-    ib_rcv: string,
-    ib_xmit: string,
     lastUpdate: number;
 }
 
@@ -24,7 +22,7 @@ export interface SystemMetrics {
         gpu?: number;
     };
     usage: {
-        cpu?: number;
+        cpu: number;
         gpu?: number;
         ram: number;
         vram?: number;
@@ -52,16 +50,15 @@ export interface SystemMetrics {
     };
     fanSpeed: {
         cpu: number;
-        motherboard: number;
         ssd: number;
     };
     disks: { [label: string]: SSDMetrics };
     frequencies: {
         cpu: number[];
-        gpuCore: number;
+        gpuCore?: number;
     };
     pwr: {
-        gpu: number;
+        gpu?: number;
     };
     system: string;
     uptime: number;

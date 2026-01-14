@@ -2,26 +2,21 @@ const SMALL_WIDTH = 540;
 const SMALL_HEIGHT = 420;
 const POWERSAVE_MS = 60000;
 const RELAX_BUFFER_MS = 995;
-const WAKE_WORD_SPEECH_TIMEOUT = 3000;
-const HA_URL = location.hostname.includes('direct2') ? 'https://ha-direct2.wtako.net' : 'https://ha-direct.wtako.net';
-const ASSETS_HOST = location.hostname.includes('direct2') ? 'https://monitor-direct2.wtako.net' : 'https://monitor-direct.wtako.net';
-const BASE = ASSETS_HOST; // Alias for assets host
-
-const EXIT_MAGIC = 'XXEXITXX';
-const REFRESH_MAGIC = 'XXREFRESHXX';
-const VOLUME_MAGIC = 'XXVOLUMEXX';
-
+const WAKE_WORD_SPEECH_TIMEOUT = 7000;
+const HA_URL = "https://" + location.host.replace("monitor-", "ha-");
+const EXIT_MAGIC = "XXEXITXX";
+const BASE = '';
+const REFRESH_MAGIC = "XXREFRESHXX";
 const NIGHT_H = 22;
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const NIGHT_VOL_EXPONENT = 1;
-let DAY_VOL = parseFloat(localStorage.getItem('day_volume') || '1');
-let NIGHT_VOL = parseFloat(localStorage.getItem('night_volume') || '1');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const COLOR_STOPS = [
     { color: "#70CAD1", position: 0 },
     { color: "#F7EE7F", position: 50 },
     { color: "#A63D40", position: 100 }
 ];
+
+// State definitions
 const STATE = {
     INITIALIZING: 0,
     IDLE: 1,
@@ -129,6 +124,22 @@ const useModalTransition = (isOpen) => {
 };
 
 class Store {
+    livingRoomLux = 100;
+    livingRoomOccupied = true;
+    bgImage = null;
+
+    get livingRoomInfo() {
+        return {
+            lux: this.livingRoomLux,
+            occupied: this.livingRoomOccupied,
+        };
+    }
+
+    get bgBrightness() {
+        const { lux } = this.livingRoomInfo;
+        return lux <= 1 ? 0 : 1;
+    }
+
     // Configuration Constants
     SYSTEM_INFO = {
         hostname: "PC",
@@ -153,11 +164,10 @@ class Store {
         },
         fanSpeed: {
             cpu: { max: 2200 },
+            ssd: { max: 2200 },
             motherboard: { max: 12000 }
         }
     };
-
-    MH_FAN = true;
 
     alertMessage = null;
     alertExpire = 0;
@@ -226,7 +236,6 @@ class Store {
     lastTTSAnimState = 0; // 1 = fading out, 2 = changing pos, 0 = fading in or stable;
     latestText = 0; // 0 = lastSTT, 1 = lastTTS
 
-    vadState = '';
     mainUI = null;
     _lastInteract = Date.now();
 
@@ -249,7 +258,6 @@ class Store {
 
     set uiPollingTimestamp(value) {
         this._uiPollingTimestamp = value;
-        this.updateBrightness();
     }
 
     get uiPollingTimestamp() {
@@ -258,7 +266,6 @@ class Store {
 
     set lastInteract(value) {
         this._lastInteract = value;
-        this.updateBrightness();
     }
 
     get lastInteract() {
@@ -266,31 +273,42 @@ class Store {
     }
 
     get mainUIBrightness() {
-        console.log("get mainUIBrightness");
-        let mainUIBrightness = 1;
-        const now = new Date(this.uiPollingTimestamp);
-        const currentHour = now.getHours();
-        if (currentHour >= NIGHT_H || currentHour < 6) {
-            // Only dim mainUI between 10 PM and 6 AM
-            const timeSinceLastInteract = (now.getTime() - this.lastInteract) / 1000; // in seconds
-            if (timeSinceLastInteract <= 30) {
-                mainUIBrightness = 1;
-            } else if (timeSinceLastInteract > 30 && timeSinceLastInteract <= 90) {
-                mainUIBrightness = 1 - ((timeSinceLastInteract - 30) / 60) * 0.7;
-            } else {
-                mainUIBrightness = 0.3; // Stays at 0.3 after 90 seconds of inactivity
-            }
-            console.log({ timeSinceLastInteract, mainUIBrightness });
-        } else {
-            mainUIBrightness = 1;
-        }
-        return Math.max(0, Math.min(1, mainUIBrightness));
+        const timeSinceLastInteract = (Math.max(this.uiPollingTimestamp, Date.now()) - this.lastInteract) / 1000;
+
+        // 1. If interaction is recent (<= 30s), keep brightness at 1
+        // regardless of occupancy status change (Condition 4)
+        if (timeSinceLastInteract <= 30) return 1;
+
+        const { occupied, lux } = this.livingRoomInfo;
+
+        // 2. If not occupied and timed out (> 30s), fade to 0 (Condition 5 & 3)
+        if (!occupied) return 0;
+
+        // 3. Occupied logic
+        const currentHour = new Date().getHours();
+        const isNight = lux <= 1 || currentHour >= NIGHT_H || currentHour < 6;
+
+        if (!isNight) return 1;
+
+        // 4. Night mode with occupancy: fade logic from 1 to 0.3 between 30s and 90s
+        if (timeSinceLastInteract > 90) return 0.3;
+
+        return 1 - ((timeSinceLastInteract - 30) / 60) * 0.7;
     }
 
     updateBrightness() {
-        if (!this.mainUI) return;
-        console.log("updateBrightness");
+        console.log('updateBrightness');
+        if (this.bgImage) {
+            if (this.bgImage.style.transition !== 'filter 1s linear') {
+                this.bgImage.style.transition = 'filter 1s linear';
+            }
+            this.bgImage.style.filter = `brightness(${this.bgBrightness})`;
+        }
+
         if (this.mainUI) {
+            if (this.mainUI.style.transition !== 'filter 1s linear') {
+                this.mainUI.style.transition = 'filter 1s linear';
+            }
             this.mainUI.style.filter = `brightness(${this.mainUIBrightness})`;
         }
     }
@@ -365,7 +383,6 @@ function formatBytes(bytes, decimals = 1, name = "B", space = true) {
     const unit = sizes[i];
     return space ? `${formattedValue} ${unit}${name}` : `${formattedValue}${unit}${name}`;
 }
-
 
 function getGMT8Time(t) {
     const now = new Date(t);
@@ -573,7 +590,7 @@ const FullScreenStatus = observer(() => {
                 }}
             >
                 <dotlottie-player
-                    src={ASSETS_HOST + "/vendor/ai.lottie"}
+                    src="/vendor/ai.lottie"
                     background="transparent"
                     speed={0.5}
                     style={{ width: "400px", height: "400px", filter }}
@@ -1910,7 +1927,6 @@ const Monitor = observer(() => {
     let infoWidth = isSmallScreen ? 150 : 240;
     let infoMT = isSmallScreen ? -20 : undefined;
     const isUsingBackupNetwork = store.io.isUsingBackup;
-    const systemSSD = store.disks['systemSSD'];
 
     console.log("render");
 
@@ -1943,15 +1959,6 @@ const Monitor = observer(() => {
                             className="temperature"
                             featherName="cpu"
                         />
-                        <Gauge
-                            value={store.temperatures.gpu}
-                            min={store.GAUGE_LIMITS.temperature.gpu.min}
-                            max={store.GAUGE_LIMITS.temperature.gpu.max}
-                            label="GPU"
-                            className="temperature"
-                            featherName="image"
-                            gpuPwr
-                        />
                         {Object.values(store.disks).map((disk) => (
                             <Gauge
                                 key={disk.label}
@@ -1961,9 +1968,6 @@ const Monitor = observer(() => {
                                 label={`SSD (${disk.name})`}
                                 className="temperature"
                                 featherName="hard-drive"
-                                clickFn={() => (store.storageModalTarget = disk.label)}
-                                textColor={STORAGE_TEXT_COLOR[store.storageInfo[disk.label]?.info?.status || 0]}
-                                textExtra={STORAGE_EXTRA_TEXT[store.storageInfo[disk.label]?.info?.status || 0]}
                             />
                         ))}
                     </div >
@@ -1987,15 +1991,6 @@ const Monitor = observer(() => {
                             cpuFreq
                         />
                         <Gauge
-                            value={store.usage.gpu}
-                            max={100}
-                            label="GPU"
-                            className="usage"
-                            featherName="image"
-                            small
-                            gpuFreq
-                        />
-                        <Gauge
                             value={store.usage.ram}
                             valueMB={store.usageMB.ram}
                             max={100}
@@ -2004,17 +1999,23 @@ const Monitor = observer(() => {
                             featherName="server"
                             small
                         />
-                        <Gauge
-                            value={store.usage.vram}
-                            valueMB={store.usageMB.vram}
-                            max={100}
-                            label="VRAM"
-                            className="usage"
-                            featherName="monitor"
-                            small
-                        />
-                    </div >
-                </div >
+                        {Object.values(store.disks).map((disk) => (
+                            <Gauge
+                                key={disk.label}
+                                value={disk.usage}
+                                valueGB={disk.usageGB}
+                                max={100}
+                                label={disk.name}
+                                className="usage"
+                                featherName="hard-drive"
+                                small
+                                clickFn={() => (store.storageModalTarget = disk.label)}
+                                textColor={STORAGE_TEXT_COLOR[store.storageInfo[disk.label]?.info?.status || 0]}
+                                textExtra={STORAGE_EXTRA_TEXT[store.storageInfo[disk.label]?.info?.status || 0]}
+                            />
+                        ))}
+                    </div>
+                </div>
                 <div
                     className="section"
                     style={{
@@ -2027,17 +2028,17 @@ const Monitor = observer(() => {
                     <div className="section-title">I/O</div>
                     <div className="gauge-container" style={{ marginTop: isSmallLandscape ? 20 : undefined }}>
                         <Gauge
-                            value={systemSSD ? systemSSD.diskRead : store.io.diskRead}
+                            value={store.io.diskRead}
                             max={store.GAUGE_LIMITS.io.diskRead.max}
-                            label="System Read"
+                            label="Disk Read"
                             className="io"
                             featherName="hard-drive"
                             small
                         />
                         <Gauge
-                            value={systemSSD ? systemSSD.diskWrite : store.io.diskWrite}
+                            value={store.io.diskWrite}
                             max={store.GAUGE_LIMITS.io.diskWrite.max}
-                            label="System Write"
+                            label="Disk Write"
                             className="io"
                             featherName="activity"
                             small
@@ -2099,11 +2100,11 @@ const Monitor = observer(() => {
                                 featherName="cpu"
                             />
                             <Gauge
-                                value={store.fanSpeed.motherboard}
-                                max={store.GAUGE_LIMITS.fanSpeed.motherboard.max}
-                                label="Motherboard"
+                                value={store.fanSpeed.ssd}
+                                max={store.GAUGE_LIMITS.fanSpeed.ssd.max}
+                                label="SSD"
                                 className="fan"
-                                featherName="server"
+                                featherName="hard-drive"
                             />
                         </div>
                     </div>
@@ -2144,10 +2145,13 @@ const Monitor = observer(() => {
                             <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.os}</div>
                             <div style={{ fontWeight: 500, opacity: 0.8 }}>{store.system}</div>
                             <div style={{ fontWeight: 600 }}>{getGMT8Time(store.lastUpdate)}</div>
+                            {
+                                // <div>{JSON.stringify(store.livingRoomInfo)} {store.mainUIBrightness}</div>
+                            }
                         </div>
                     </div>
                 </div>
-                {/* <NetworkBars isSmallLandscape={isSmallLandscape} /> */}
+                <NetworkBars isSmallLandscape={isSmallLandscape} />
             </div>
 
             {!shouldPowerSave() && (
@@ -2253,6 +2257,7 @@ let haReadyForAudio = false;
 let currentPipelineRunId = null;
 let currentPipelineListRequestId = null;
 let currentDeviceConfigRequestId = null;
+let currentGetStatesRequestId = null;
 let sttBinaryHandlerId = null;
 
 let wakeWordTimeoutId = null;
@@ -2542,6 +2547,26 @@ async function initializeApp() {
         return;
     }
     console.log("HA Token and Pipeline Name found.");
+
+    try {
+        await connectWebSocket(); // This also attempts VAD initialization on auth_ok
+        console.log("HA WebSocket connection established, VAD init process started.");
+    } catch (error) {
+        console.error("Failed to establish initial HA connection or init VAD:", error);
+        panelAlert("Could not connect to Home Assistant or init voice: " + error.message);
+        // Allow Bumblebee to start; hotword might trigger successful connection
+    }
+
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((track) => track.stop());
+        console.log("Microphone permission granted.");
+    } catch (err) {
+        console.error("Microphone permission denied:", err);
+        // panelAlert("Microphone access is required: " + err.message);
+        return;
+    }
+
     try {
         bumblebee = new Bumblebee();
         bumblebee.setWorkersPath("/vendor/bumblebee/workers");
@@ -2554,24 +2579,6 @@ async function initializeApp() {
         console.error("Failed to initialize Bumblebee:", error);
         panelAlert("Error initializing hotword engine: " + error.message);
         return;
-    }
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach((track) => track.stop());
-        console.log("Microphone permission granted.");
-    } catch (err) {
-        console.error("Microphone permission denied:", err);
-        panelAlert("Microphone access is required: " + err.message);
-        return;
-    }
-
-    try {
-        await connectWebSocket(); // This also attempts VAD initialization on auth_ok
-        console.log("HA WebSocket connection established, VAD init process started.");
-    } catch (error) {
-        console.error("Failed to establish initial HA connection or init VAD:", error);
-        panelAlert("Could not connect to Home Assistant or init voice: " + error.message);
-        // Allow Bumblebee to start; hotword might trigger successful connection
     }
 
     if (bumblebee) {
@@ -2589,7 +2596,7 @@ async function initializeApp() {
 
 // --- Event Handlers and Core Logic ---
 
-function resetAll(notify = true) {
+function resetAll() {
     pipelineActive = false;
     resetAudioStreamingState();
     conversationId = newConversationId();
@@ -2604,6 +2611,7 @@ function resetAll(notify = true) {
 }
 
 async function handleHotword(hotwordDetails) {
+    return;
     const hotword = typeof hotwordDetails === "string" ? hotwordDetails : hotwordDetails.hotword;
     console.log(`Hotword '${hotword}' detected. Current state: ${getStateName(store.vaState)}.`);
     if (hotword === "bumblebee") {
@@ -2622,7 +2630,6 @@ async function handleHotword(hotwordDetails) {
         console.log("Pipeline or VAD already processing speech for HA. Ignoring hotword.");
         return;
     }
-
 
     // Re-check config
     HA_TOKEN = getHAToken();
@@ -2686,6 +2693,11 @@ function connectWebSocket() {
                     break;
                 case "auth_ok":
                     console.log("WebSocket: Authentication successful.");
+
+                    // Subscribe to state changes
+                    sendMessage({ type: "subscribe_events", event_type: "state_changed" });
+                    currentGetStatesRequestId = sendMessage({ type: "get_states" });
+
                     initializeVAD()
                         .then(() => {
                             console.log("VAD initialized successfully post-auth.");
@@ -2710,6 +2722,12 @@ function connectWebSocket() {
                     reject(new Error("WebSocket auth failed: Invalid token."));
                     break;
                 case "result":
+                    if (message.id === currentGetStatesRequestId && message.success) {
+                        message.result.forEach(state => {
+                            updateState(state);
+                        });
+                    }
+
                     if (message.id === currentPipelineRunId && !message.success) {
                         console.error("HA WS: assist_pipeline/run command failed:", message.error);
                         // State change to IDLE will be handled by 'error' event or 'run-end'
@@ -2731,7 +2749,11 @@ function connectWebSocket() {
 
                     break;
                 case "event":
-                    handlePipelineEvent(message.event);
+                    if (message.event.event_type === "state_changed") {
+                        updateState(message.event.data.new_state);
+                    } else {
+                        handlePipelineEvent(message.event);
+                    }
                     break;
                 case "pong":
                     break; // console.debug("WS pong received.");
@@ -2745,6 +2767,7 @@ function connectWebSocket() {
             pipelineActive = false;
             resetAudioStreamingState();
             haWebSocket = null;
+
             if (store.vaState !== STATE.INITIALIZING && store.vaState !== STATE.IDLE) {
                 console.log("WebSocket closed, transitioning to IDLE state.");
                 if (wasPipelineActive) panelAlert("Connection to Home Assistant lost.");
@@ -2804,16 +2827,7 @@ function initializeVAD() {
                         wakeWordTimeoutId = null;
                     }
                     if (store.vaState === STATE.WAKE_WORD_TRIGGERED) {
-                        console.log("VAD: Speech really started.");
-                        store.voiceLastActiveAt = Date.now();
-                        store.isUserSpeaking = true;
-                        if (wakeWordTimeoutId) { // Clear "no speech after wake word" timeout
-                            clearTimeout(wakeWordTimeoutId);
-                            wakeWordTimeoutId = null;
-                        }
                         initiateHAPipelineRun(); // This will set pipelineActive = true on success
-                    } else if (store.vaState === STATE.PLAYING_TTS) {
-
                     } else {
                         console.warn(`VAD: Speech started in unexpected state: ${getStateName(store.vaState)}.`);
                     }
@@ -2826,12 +2840,6 @@ function initializeVAD() {
                         myvad.pause();
                     }
                     if (store.vaState === STATE.WAKE_WORD_TRIGGERED && pipelineActive) {
-                        console.log("VAD: Speech ended.");
-                        if (myvad && myvad.listening) {
-                            console.log("VAD: Speech ended, pausing VAD for this interaction.");
-                            myvad.pause();
-                        }
-
                         // Send the complete utterance. processAndSendAudio will queue it.
                         // sendAudioToHA will send it as one message (or you could adapt it to chunk if HA prefers).
                         // The 'true' flag ensures sendHAStreamEnd is called afterwards.
@@ -2936,6 +2944,22 @@ async function lastTTSAnimation(newText) {
     store.lastTTSAnimState = 0;
 }
 
+function updateState(state) {
+    if (!state) return;
+    const entityId = state.entity_id;
+    if (entityId === "binary_sensor.human_presence_sensor_e235_occupancy") {
+        store.livingRoomOccupied = state.state === "on";
+        store.updateBrightness();
+        console.log({ state })
+
+    } else if (entityId === "sensor.lumi_lumi_sen_ill_agl01") {
+        store.livingRoomLux = parseFloat(state.state);
+        store.updateBrightness();
+        console.log({ state })
+
+    }
+}
+
 function handlePipelineEvent(event) {
     // Should primarily be in SENDING_AUDIO, or WAKE_WORD_TRIGGERED (for run-start after speech started)
     if (!pipelineActive && !(store.vaState === STATE.PLAYING_TTS && event.type === "tts-end")) {
@@ -2997,18 +3021,13 @@ function handlePipelineEvent(event) {
                 console.log(ttsText);
                 return;
             }
-            if (ttsText.includes(EXIT_MAGIC)) { setVAState(STATE.IDLE); return; }
-            if (ttsText.includes(REFRESH_MAGIC)) { location.reload(); return; }
-            if (ttsText.includes(VOLUME_MAGIC)) {
-                const volumeMatch = ttsText.match(new RegExp(`${VOLUME_MAGIC}\\s*([+-]?\\d+)?`));
-                if (volumeMatch && volumeMatch[1] !== undefined) {
-                    setVolume(volumeMatch[1]);
-                } else if (ttsText.includes(`${VOLUME_MAGIC} +`)) {
-                    setVolume('+10');
-                } else if (ttsText.includes(`${VOLUME_MAGIC} -`)) {
-                    setVolume('-10');
-                }
-                resetAll(false);
+            if (ttsText.includes(EXIT_MAGIC)) {
+                setVAState(STATE.IDLE); // Go back to idle
+                return;
+            }
+            if (ttsText.includes(REFRESH_MAGIC)) {
+                setVAState(STATE.IDLE); // Go back to idle
+                location.reload();
                 return;
             }
             lastTTSAnimation(ttsText);
@@ -3195,6 +3214,9 @@ setInterval(() => {
     if (!store.mainUI) {
         store.mainUI = document.querySelector("html");
     }
+    // if (!store.bgImage) {
+    //     store.bgImage = document.getElementById("bg-image");
+    // }
 }, 1000);
 
 document.querySelector("html").addEventListener("click", (e) => {
@@ -3205,4 +3227,8 @@ document.querySelector("html").addEventListener("click", (e) => {
 document.querySelector("html").addEventListener("touchstart", (e) => {
     // console.log('store.lastInteract = Date.now();')
     store.lastInteract = Date.now();
+});
+
+autorun(() => {
+    store.updateBrightness();
 });

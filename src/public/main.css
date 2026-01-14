@@ -1,14 +1,10 @@
-html, body {
-    background-color: rgb(27, 38, 44);
-}
-
 body {
+    background-color: rgb(0, 0, 0);
     justify-content: center;
     align-items: center;
     min-height: 100vh;
     margin: 0;
     color: white;
-    overflow-x: hidden;
 }
 
 #root {
@@ -61,14 +57,14 @@ body {
     border-radius: 50%;
     transform: rotate(-135deg);
     background: conic-gradient(#70CAD1 0%, #F7EE7F 37.5%, #A63D40 75%, transparent 0%);
-    /* filter: brightness(1.25); */
+    filter: brightness(1.25);
     z-index: 2;
 }
 
 .gauge-cover {
     width: 75%;
     height: 75%;
-    background: rgb(27, 38, 44);
+    background: rgb(0, 0, 0);
     border-radius: 50%;
     position: absolute;
     top: 50%;
@@ -90,7 +86,7 @@ body {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: conic-gradient(transparent 0deg, transparent var(--a), rgb(27, 38, 44) calc(var(--a) + 0.2%));
+    background: conic-gradient(transparent 0deg, transparent var(--a), rgb(0, 0, 0) calc(var(--a) + 0.2%));
     z-index: 2;
     transition: --a 1s ease-out;
 }
@@ -111,7 +107,7 @@ body {
     opacity: 0.25;
     z-index: 3;
     inset: 0px;
-    height: 100%;
+    height: 100vh;
     pointer-events: none;
 }
 
@@ -176,7 +172,7 @@ body {
     z-index: 2;
     position: absolute;
     top: 52px;
-    /* filter: contrast(2) brightness(1.5); */
+    filter: contrast(2) brightness(1.5);
 }
 
 dotlottie-player {
