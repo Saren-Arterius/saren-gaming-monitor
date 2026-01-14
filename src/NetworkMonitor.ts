@@ -1,4 +1,6 @@
 import { Redis } from "ioredis";
+import { spawn } from "child_process";
+import path from "path";
 
 export type PingStats = [number, number, number, number, number];
 
@@ -34,15 +36,59 @@ export abstract class NetworkMonitor<T extends NetworkTarget, D extends MonitorD
         return this.redis;
     }
 
-    start() {
+    private static rustServiceStarted = false;
+
+    static startRustService() {
+        if (this.rustServiceStarted) return;
+        this.rustServiceStarted = true;
+
+        const rustDir = path.join(process.cwd(), "rust-ping-service");
+        const binaryPath = path.join(rustDir, "target/release/rust-ping-service");
+
+        console.log(`Setting capabilities for ${binaryPath}...`);
+
+        // Set capabilities to allow raw socket access for pinging without root
+        const setcap = spawn("sudo", ["setcap", "cap_net_raw+ep", binaryPath]);
+
+        setcap.on("close", (code) => {
+            if (code !== 0) {
+                console.error(`Failed to set capabilities, exit code: ${code}`);
+            }
+
+            console.log(`Starting Rust ping service in ${rustDir}...`);
+            const child = spawn("cargo", ["run", "--release"], {
+                cwd: rustDir,
+                stdio: ["ignore", "pipe", "pipe"],
+            });
+
+            child.stdout.on("data", (data) => {
+                process.stdout.write(`[Rust Stdout] ${data}`);
+            });
+
+            child.stderr.on("data", (data) => {
+                process.stderr.write(`[Rust Stderr] ${data}`);
+            });
+
+            child.on("error", (err) => {
+                console.error("Failed to start Rust service:", err);
+            });
+
+            child.on("close", (code) => {
+                console.log(`Rust service exited with code ${code}`);
+            });
+        });
+    }
+
+    async start() {
         if (this.isRunning) return;
         this.isRunning = true;
 
-        // Ping loop every 5s
-        setInterval(() => this.pingAll(), 5000);
+        // Start Rust ping service (guarded by static flag)
+        NetworkMonitor.startRustService();
 
-        // Retention policy every 1h
-        setInterval(() => this.retention(), 3600 * 1000);
+        // Sync targets to Redis for Rust service
+        this.syncTargets();
+        setInterval(() => this.syncTargets(), 60000);
 
         // Aggregate stats every 1m (Wait 5s initially to allow first pings)
         setTimeout(() => {
@@ -51,157 +97,55 @@ export abstract class NetworkMonitor<T extends NetworkTarget, D extends MonitorD
         }, 5000);
     }
 
+    protected async syncTargets() {
+        const redis = this.getRedis();
+        const targets = this.getTargets().map(t => ({
+            id: t.id,
+            address: t.address,
+            prefix: this.prefix
+        }));
+
+        const key = `monitor:targets:${this.prefix}`;
+        await redis.del(key);
+        for (const target of targets) {
+            await redis.rpush(key, JSON.stringify(target));
+        }
+    }
+
     getCachedData() {
         return this.data;
     }
 
     protected abstract getTargets(): T[];
 
-    protected pingAll() {
-        const timestamp = Date.now();
-        this.getTargets().forEach((target) => {
-            this.pingTarget(target, timestamp);
-        });
-    }
-
-    protected async pingTarget(target: T, timestamp: number) {
-        const redis = this.getRedis();
-        let ms = 5000;
-        try {
-            const proc = Bun.spawn(["ping", "-c", "1", "-W", "5", target.address], {
-                stdout: "pipe",
-                stderr: "pipe",
-            });
-
-            const exitCode = await proc.exited;
-
-            if (exitCode === 0) {
-                const output = await new Response(proc.stdout).text();
-                const match = output.match(/time=([\d.]+)/);
-                if (match && match[1]) {
-                    ms = parseFloat(match[1]);
-                    if (ms > 5000) ms = 5000;
-                }
-            }
-        } catch (error) {
-            ms = 5000;
-        }
-
-        const streamKey = `${this.prefix}:stream:${target.id}`;
-        await redis.xadd(streamKey, '*', 'ts', timestamp.toString(), 'ms', ms.toString());
-    }
-
-    protected async retention() {
-        const redis = this.getRedis();
-        for (const target of this.getTargets()) {
-            const streamKey = `${this.prefix}:stream:${target.id}`;
-            await redis.xtrim(streamKey, 'MAXLEN', 86400 / 5);
-        }
-    }
-
     protected async aggregateData() {
         const redis = this.getRedis();
-        const now = Date.now();
+        const targets = this.getTargets();
+
+        if (targets.length === 0) {
+            this.data = [];
+            return;
+        }
+        const keys = targets.map(t => `${this.prefix}:cache:${t.id}`);
+        const cachedResults = await redis.mget(keys);
         const results: D[] = [];
-        const timeframes = {
-            "1m": 60 * 1000,
-            "5m": 5 * 60 * 1000,
-            "15m": 15 * 60 * 1000,
-            "1h": 3600 * 1000,
-            "3h": 3 * 3600 * 1000,
-            "12h": 12 * 3600 * 1000,
-            "24h": 24 * 3600 * 1000
-        };
 
-        for (const target of this.getTargets()) {
-            const streamKey = `${this.prefix}:stream:${target.id}`;
+        for (let i = 0; i < targets.length; i++) {
+            const cached = cachedResults[i];
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                
+                // Specific logic for IOTMonitor to skip dead devices in results
+                if (this.prefix === 'iot' && parsed.stats['24h'][0] === 100) continue;
 
-            const startRange = now - timeframes["24h"];
-            const rawData = await redis.xrange(streamKey, startRange, '+');
-
-            const points = rawData.map((entry: any) => {
-                const fields = entry[1];
-                let ts = 0;
-                let ms = 5000;
-
-                for (let i = 0; i < fields.length; i += 2) {
-                    if (fields[i] === 'ts') ts = parseInt(fields[i + 1]);
-                    if (fields[i] === 'ms') ms = parseFloat(fields[i + 1]);
-                }
-                return { ts, ms };
-            });
-
-            const statsObj: any = {};
-            for (const [label, duration] of Object.entries(timeframes)) {
-                const cutoff = now - duration;
-                const relevantPoints = points.filter((p: any) => p.ts >= cutoff);
-                statsObj[label] = this.calculateMetrics(relevantPoints);
+                results.push({
+                    ...targets[i],
+                    stats: parsed.stats,
+                    history: parsed.history
+                } as unknown as D);
             }
-
-            const history: PingStats[] = [];
-            for (let i = 0; i < 30; i++) {
-                const bucketEnd = now - (i * 60 * 1000);
-                const bucketStart = now - ((i + 1) * 60 * 1000);
-
-                const bucketPoints = points.filter((p: any) => p.ts >= bucketStart && p.ts < bucketEnd);
-                history.push(this.calculateMetrics(bucketPoints));
-            }
-
-            // Specific logic for IOTMonitor to skip dead devices in results
-            if (this.prefix === 'iot' && statsObj['24h'][0] === 100) continue;
-
-            results.push({
-                ...target,
-                stats: statsObj,
-                history: history.reverse()
-            } as unknown as D);
         }
 
         this.data = results;
-    }
-
-    protected calculateMetrics(points: { ts: number, ms: number }[]): PingStats {
-        if (points.length === 0) {
-            return [0, 0, 0, 0, 0];
-        }
-
-        let successCount = 0;
-        let totalMs = 0;
-        let min = 5000;
-        let max = 0;
-        let jitterSum = 0;
-        let prevMs: number | null = null;
-        let jitterCount = 0;
-
-        for (const p of points) {
-            if (p.ms >= 5000) {
-                continue;
-            }
-
-            successCount++;
-            totalMs += p.ms;
-            if (p.ms < min) min = p.ms;
-            if (p.ms > max) max = p.ms;
-
-            if (prevMs !== null) {
-                jitterSum += Math.abs(p.ms - prevMs);
-                jitterCount++;
-            }
-            prevMs = p.ms;
-        }
-
-        const packetLoss = ((points.length - successCount) / points.length) * 100;
-        const avg = successCount > 0 ? totalMs / successCount : 0;
-        const jitter = jitterCount > 0 ? jitterSum / jitterCount : 0;
-
-        if (successCount === 0) min = 0;
-
-        return [
-            parseFloat(packetLoss.toFixed(2)),
-            parseFloat(min.toFixed(2)),
-            parseFloat(max.toFixed(2)),
-            parseFloat(avg.toFixed(2)),
-            parseFloat(jitter.toFixed(2))
-        ];
     }
 }

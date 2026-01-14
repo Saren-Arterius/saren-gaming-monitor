@@ -98,8 +98,8 @@ export class AppServer {
     }
 
     private setupMonitoring() {
-        this.iotMonitor.start();
-        this.internetMonitor.start();
+        this.iotMonitor.start().catch(e => console.error("Failed to start IOTMonitor", e));
+        this.internetMonitor.start().catch(e => console.error("Failed to start InternetMonitor", e));
 
         (async () => {
             const metrics = await this.systemMonitor.updateMetrics();

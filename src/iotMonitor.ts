@@ -13,12 +13,12 @@ export class IOTMonitor extends NetworkMonitor<Device, DeviceMonitorData> {
     protected prefix = 'iot';
     private devices: Map<string, Device> = new Map();
 
-    start() {
+    async start() {
         if (!CONFIG.iotLeases) return;
-        this.refreshLeases();
+        await this.refreshLeases();
         // Refresh leases every minute
         setInterval(() => this.refreshLeases(), 60000);
-        super.start();
+        await super.start();
     }
 
     protected getTargets(): Device[] {
