@@ -667,138 +667,218 @@ const fullScreenOverlayStyle = {
 
 const StorageModal = observer(() => {
     const section = store.storageModalTarget;
-    const [displaySection, setDisplaySection] = useState(section);
     const { shouldRender, style } = useModalTransition(!!section);
-
-    useEffect(() => {
-        if (section) setDisplaySection(section);
-    }, [section]);
 
     if (!shouldRender) return null;
 
-    const target = section || displaySection;
-    if (!target) return null;
+    const tabStyle = (isActive) => ({
+        padding: "10px 15px",
+        cursor: "pointer",
+        borderBottom: isActive ? "2px solid #70CAD1" : "2px solid transparent",
+        color: isActive ? "#70CAD1" : "#aaa",
+        fontWeight: isActive ? "600" : "400",
+        transition: "all 0.2s ease"
+    });
 
+    const disks = Object.values(store.disks);
+
+    return (
+        <Modal
+            title={
+                <div style={{ display: "flex", borderBottom: "1px solid #333", marginBottom: -21, marginTop: -20, marginLeft: -20 }}>
+                    {disks.map((disk) => (
+                        <div
+                            key={disk.label}
+                            style={tabStyle(section === disk.label)}
+                            onClick={() => (store.storageModalTarget = disk.label)}
+                        >
+                            {disk.name}
+                        </div>
+                    ))}
+                </div>
+            }
+            onClose={() => (store.storageModalTarget = null)}
+            style={style}
+        >
+            <StorageHeader section={section} />
+            <StorageContent target={section} />
+            <div style={{ opacity: 0.6, fontSize: "0.8em", textAlign: "right", position: "fixed", bottom: "1em", marginLeft: "-1.5em" }}>
+                Last updated: {store.storageInfo[section] ? formatTimeDiff(store.storageInfo[section].lastUpdate) : "N/A"}
+            </div>
+        </Modal>
+    );
+});
+
+const StorageHeader = observer(({ section }) => {
+    useEffect(() => {
+        feather.replace();
+    }, [section]);
+
+    const data = store.storageInfo[section];
+    if (!data || !data.info) return null;
+
+    const info = data.info;
+    const status = info.status || 0;
+    const statusColor = STORAGE_TEXT_COLOR[status] || getColorAtPercent(0);
+    const isSmallScreen = store.windowWidth < SMALL_WIDTH || store.windowHeight < SMALL_HEIGHT;
+
+    return (
+        <div
+            style={{
+                marginBottom: 15,
+                backgroundColor: "rgb(26, 26, 26)",
+                borderRadius: 8,
+                overflow: "hidden",
+                border: "1px solid rgb(42, 42, 42)",
+                padding: 15,
+                display: "flex",
+                flexDirection: isSmallScreen ? "column" : "row",
+                gap: isSmallScreen ? 15 : 20
+            }}
+        >
+            <div style={{ flex: 1, borderBottom: isSmallScreen ? '1px solid #333' : 'none', borderRight: isSmallScreen ? 'none' : '1px solid #333', paddingRight: isSmallScreen ? 0 : 15, paddingBottom: isSmallScreen ? 15 : 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                    <i data-feather="activity" style={{ width: 14, height: 14, color: '#70CAD1', opacity: 0.8 }}></i>
+                    <span style={{ fontSize: '0.8em', fontWeight: 600, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Status</span>
+                </div>
+                <div style={{ fontSize: '1.2em', fontWeight: 700, color: statusColor, fontFamily: 'monospace' }}>{info.statusText}</div>
+            </div>
+            <div style={{ flex: 1, borderBottom: isSmallScreen ? '1px solid #333' : 'none', borderRight: isSmallScreen ? 'none' : '1px solid #333', paddingRight: isSmallScreen ? 0 : 15, paddingBottom: isSmallScreen ? 15 : 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                    <i data-feather="alert-triangle" style={{ width: 14, height: 14, color: statusColor }}></i>
+                    <span style={{ fontSize: "0.8em", fontWeight: 600, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Recent Issues</span>
+                </div>
+                {info.issues.length === 0 ? (
+                    <div style={{ color: getColorAtPercent(0), fontSize: "0.85em", fontWeight: 500 }}>
+                        All systems operational
+                    </div>
+                ) : (
+                    <div style={{ maxHeight: 80, overflowY: 'auto', paddingRight: 5 }}>
+                        {info.issues.map((issue, i) => (
+                            <div key={i} style={{
+                                fontSize: "0.85em",
+                                marginBottom: 6,
+                                color: statusColor,
+                                fontFamily: 'monospace'
+                            }}>
+                                • {issue}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-start", gap: 12, paddingLeft: isSmallScreen ? 0 : 5 }}>
+                <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                        <i data-feather="database" style={{ width: 14, height: 14, color: '#eee', opacity: 0.6 }}></i>
+                        <span style={{ fontSize: '0.8em', fontWeight: 600, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Mount Points</span>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {data.paths.map((path, idx) => (
+                            <span key={idx} style={{
+                                fontSize: '0.85em',
+                                color: '#eee',
+                                fontFamily: 'monospace',
+                                fontWeight: 500
+                            }}>
+                                {path}
+                            </span>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+});
+
+const StorageContent = observer(({ target }) => {
+    if (!target) return null;
     const data = store.storageInfo[target];
 
     if (!data || !data.paths)
-        return (
-            <Modal title={`Storage Info (${target})`} onClose={() => (store.storageModalTarget = null)} style={style}>
-                No data.
-            </Modal>
-        );
+        return <div style={{ padding: 20 }}>No data.</div>;
 
     const info = data.info;
     const smart = info.metrics.smart;
     const fs = info.metrics.filesystem;
-    const lastUpdate = formatTimeDiff(data.lastUpdate);
 
     const tdStyle = { padding: 8, opacity: 0.8, width: "100%" };
     const tdRightStyle = { textAlign: "right" };
 
     return (
-        <Modal title={`Storage Info (${store.disks[target].name})`} onClose={() => (store.storageModalTarget = null)} style={style}>
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                <div style={{ opacity: 0.8 }}>Paths: {data.paths.join(", ")}</div>
-                <div style={{ opacity: 0.8 }}>
-                    Status: <strong>{info.statusText}</strong>
-                </div>
-                <div style={{ opacity: 0.6, fontSize: "0.9em" }}>Last updated: {lastUpdate}</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <h3
+                style={{
+                    borderBottom: "1px solid #444",
+                    paddingBottom: 5,
+                    marginTop: 15
+                }}
+            >
+                Drive Health
+            </h3>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <tbody>
+                    <tr>
+                        <td style={tdStyle}>Spare blocks</td>
+                        <td style={tdRightStyle}>{smart.spare.formatted}</td>
+                    </tr>
+                    <tr>
+                        <td style={tdStyle}>Wear level</td>
+                        <td style={tdRightStyle}>{smart.wear.formatted}</td>
+                    </tr>
+                    <tr>
+                        <td style={tdStyle}>Media errors</td>
+                        <td style={tdRightStyle}>{smart.mediaErrors.formatted}</td>
+                    </tr>
+                    <tr>
+                        <td style={tdStyle}>Age</td>
+                        <td style={tdRightStyle}>{smart.powerOnTime.formatted}</td>
+                    </tr>
+                    <tr>
+                        <td style={tdStyle}>Total written</td>
+                        <td style={tdRightStyle}>{smart.dataWritten.formatted}</td>
+                    </tr>
+                    <tr>
+                        <td style={tdStyle}>Total read</td>
+                        <td style={tdRightStyle}>{smart.dataRead.formatted}</td>
+                    </tr>
+                </tbody>
+            </table>
 
-                <h3
-                    style={{
-                        borderBottom: "1px solid #444",
-                        paddingBottom: 5,
-                        marginTop: 15
-                    }}
-                >
-                    Drive Health
-                </h3>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <tbody>
-                        <tr>
-                            <td style={tdStyle}>Spare blocks</td>
-                            <td style={tdRightStyle}>{smart.spare.formatted}</td>
-                        </tr>
-                        <tr>
-                            <td style={tdStyle}>Wear level</td>
-                            <td style={tdRightStyle}>{smart.wear.formatted}</td>
-                        </tr>
-                        <tr>
-                            <td style={tdStyle}>Media errors</td>
-                            <td style={tdRightStyle}>{smart.mediaErrors.formatted}</td>
-                        </tr>
-                        <tr>
-                            <td style={tdStyle}>Age</td>
-                            <td style={tdRightStyle}>{smart.powerOnTime.formatted}</td>
-                        </tr>
-                        <tr>
-                            <td style={tdStyle}>Total written</td>
-                            <td style={tdRightStyle}>{smart.dataWritten.formatted}</td>
-                        </tr>
-                        <tr>
-                            <td style={tdStyle}>Total read</td>
-                            <td style={tdRightStyle}>{smart.dataRead.formatted}</td>
-                        </tr>
-                    </tbody>
-                </table>
-
-                <h3
-                    style={{
-                        borderBottom: "1px solid #444",
-                        paddingBottom: 5,
-                        marginTop: 15
-                    }}
-                >
-                    BTRFS Status
-                </h3>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <tbody>
-                        <tr>
-                            <td style={tdStyle}>Write errors</td>
-                            <td style={tdRightStyle}>{fs.writeErrors}</td>
-                        </tr>
-                        <tr>
-                            <td style={tdStyle}>Read errors</td>
-                            <td style={tdRightStyle}>{fs.readErrors}</td>
-                        </tr>
-                        <tr>
-                            <td style={tdStyle}>Flush errors</td>
-                            <td style={tdRightStyle}>{fs.flushErrors}</td>
-                        </tr>
-                        <tr>
-                            <td style={tdStyle}>Corruption errors</td>
-                            <td style={tdRightStyle}>{fs.corruptionErrors}</td>
-                        </tr>
-                        <tr>
-                            <td style={tdStyle}>Generation errors</td>
-                            <td style={tdRightStyle}>{fs.generationErrors}</td>
-                        </tr>
-                    </tbody>
-                </table>
-
-                {info.issues.length > 0 && (
-                    <>
-                        <h3
-                            style={{
-                                borderBottom: "1px solid #444",
-                                paddingBottom: 5,
-                                marginTop: 15,
-                                color: "#ff6b6b"
-                            }}
-                        >
-                            Issues Found
-                        </h3>
-                        <ul style={{ paddingLeft: 20, color: "#ff6b6b" }}>
-                            {info.issues.map((issue, i) => (
-                                <li key={i}>{issue}</li>
-                            ))}
-                        </ul>
-                    </>
-                )}
-                {info.issues.length === 0 && <div style={{ marginTop: 15, color: "#51cf66" }}>No issues found.</div>}
-            </div>
-        </Modal>
+            <h3
+                style={{
+                    borderBottom: "1px solid #444",
+                    paddingBottom: 5,
+                    marginTop: 15
+                }}
+            >
+                BTRFS Status
+            </h3>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <tbody>
+                    <tr>
+                        <td style={tdStyle}>Write errors</td>
+                        <td style={tdRightStyle}>{fs.writeErrors}</td>
+                    </tr>
+                    <tr>
+                        <td style={tdStyle}>Read errors</td>
+                        <td style={tdRightStyle}>{fs.readErrors}</td>
+                    </tr>
+                    <tr>
+                        <td style={tdStyle}>Flush errors</td>
+                        <td style={tdRightStyle}>{fs.flushErrors}</td>
+                    </tr>
+                    <tr>
+                        <td style={tdStyle}>Corruption errors</td>
+                        <td style={tdRightStyle}>{fs.corruptionErrors}</td>
+                    </tr>
+                    <tr>
+                        <td style={tdStyle}>Generation errors</td>
+                        <td style={tdRightStyle}>{fs.generationErrors}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
     );
 });
 
@@ -851,6 +931,10 @@ const iotPingColor = (pAvg, pLoss) =>
     getColorAtPercent(Math.min(100, Math.max((pAvg || 0) ** 1.5 / 50, pLoss || 0)));
 
 const NetworkContent = observer(() => {
+    useEffect(() => {
+        feather.replace();
+    }, []);
+
     const pingMetrics = store.networkMetrics.ping_statistics;
     const trafficMetrics = store.networkMetrics.network_traffic;
     const formatShort = (date) =>
@@ -898,6 +982,18 @@ const NetworkContent = observer(() => {
     };
     const tdStyle = { padding: "8px", borderBottom: "1px solid #222" };
     const numStyle = { ...tdStyle, textAlign: "right" };
+
+    let outageColor = getColorAtPercent(0);
+    let durationSecondsSum = 0;
+
+    if (pingMetrics.outages.length > 0) {
+        durationSecondsSum = pingMetrics.outages.reduce((sum, o) => sum + o.duration_seconds, 0);
+        const extraPercent = Math.min(50, (durationSecondsSum / 300) * 100);
+        outageColor = getColorAtPercent(50 + extraPercent);
+    }
+
+    const isSmallScreen = store.windowWidth < SMALL_WIDTH || store.windowHeight < SMALL_HEIGHT;
+
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             <div
@@ -909,38 +1005,83 @@ const NetworkContent = observer(() => {
                     border: "1px solid rgb(42, 42, 42)",
                     padding: 15,
                     display: "flex",
-                    gap: 20
+                    flexDirection: isSmallScreen ? "column" : "row",
+                    gap: isSmallScreen ? 15 : 20
                 }}
             >
-                <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: "0.9em", fontWeight: 600, marginBottom: 5, opacity: 0.8 }}>Recent Outages (24h)</div>
+                <div style={{ flex: 1, borderBottom: isSmallScreen ? '1px solid #333' : 'none', borderRight: isSmallScreen ? 'none' : '1px solid #333', paddingRight: isSmallScreen ? 0 : 15, paddingBottom: isSmallScreen ? 15 : 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                        <i data-feather="activity" style={{ width: 14, height: 14, color: '#70CAD1', opacity: 0.8 }}></i>
+                        <span style={{ fontSize: '0.8em', fontWeight: 600, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Active Connections</span>
+                    </div>
+                    <div style={{ fontSize: '1.2em', fontWeight: 700, color: '#70CAD1', fontFamily: 'monospace' }}>{store.io.activeConn}</div>
+                </div>
+                <div style={{ flex: 1, borderBottom: isSmallScreen ? '1px solid #333' : 'none', borderRight: isSmallScreen ? 'none' : '1px solid #333', paddingRight: isSmallScreen ? 0 : 15, paddingBottom: isSmallScreen ? 15 : 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                        <i data-feather="alert-triangle" style={{ width: 14, height: 14, color: outageColor }}></i>
+                        <span style={{ fontSize: "0.8em", fontWeight: 600, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Recent Outages</span>
+                    </div>
                     {pingMetrics.outages.length === 0 ? (
-                        <div style={{ opacity: 0.5, fontSize: "0.85em" }}>None</div>
+                        <div style={{ color: getColorAtPercent(0), fontSize: "0.85em", fontWeight: 500 }}>
+                            All systems operational
+                        </div>
                     ) : (
-                        <ul style={{ paddingLeft: 18, margin: 0, opacity: 0.8, fontSize: "0.85em" }}>
+                        <div style={{ maxHeight: 80, overflowY: 'auto', paddingRight: 5 }}>
                             {pingMetrics.outages
                                 .slice()
                                 .reverse()
                                 .map((o, i) => (
-                                    <li key={i}>
-                                        {formatShort(new Date(o.start))} ({Math.floor(o.duration_seconds / 60)}m{o.duration_seconds % 60}s)
-                                    </li>
+                                    <div key={i} style={{
+                                        fontSize: "0.85em",
+                                        marginBottom: 6,
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        color: outageColor,
+                                        fontFamily: 'monospace'
+                                    }}>
+                                        <span style={{ opacity: 0.8 }}>{formatShort(new Date(o.start))}</span>
+                                        <span style={{ fontWeight: 600 }}>{Math.floor(o.duration_seconds / 60)}m {o.duration_seconds % 60}s</span>
+                                    </div>
                                 ))}
-                        </ul>
+                        </div>
                     )}
                 </div>
-                <div style={{ flex: 1, textAlign: "right", display: "flex", flexDirection: "column", justifyContent: "center", gap: 4 }}>
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-start", gap: 12, paddingLeft: isSmallScreen ? 0 : 5 }}>
                     <div>
-                        Active Conns: <strong>{store.io.activeConn}</strong>
-                    </div>
-                    <div style={{ fontSize: "0.9em", opacity: 0.8 }}>
-                        Open Ports: {store.networkMetrics.internet_ports.map((s) => s.replace(/open/g, "").trim())?.join(", ") || "None"}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                            <i data-feather="unlock" style={{ width: 14, height: 14, color: '#eee', opacity: 0.6 }}></i>
+                            <span style={{ fontSize: '0.8em', fontWeight: 600, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Open Ports</span>
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                            {store.networkMetrics.internet_ports.length > 0 ? (
+                                store.networkMetrics.internet_ports.map((s, idx) => (
+                                    <span key={idx} style={{
+                                        fontSize: '0.85em',
+                                        color: '#eee',
+                                        fontFamily: 'monospace',
+                                        fontWeight: 500
+                                    }}>
+                                        {s.replace(/open/g, "").trim()}
+                                    </span>
+                                ))
+                            ) : (
+                                <span style={{ fontSize: '0.85em', opacity: 0.4 }}>None</span>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
 
             <div>
-                <div style={{ fontSize: "1.1em", fontWeight: 600, marginBottom: 5 }}>Ping Statistics</div>
+                <h3
+                    style={{
+                        borderBottom: "1px solid #444",
+                        paddingBottom: 5,
+                        marginTop: 15
+                    }}
+                >
+                    Ping Statistics
+                </h3>
                 <table
                     style={{
                         width: "100%",
@@ -972,7 +1113,15 @@ const NetworkContent = observer(() => {
             </div>
 
             <div>
-                <div style={{ fontSize: "1.1em", fontWeight: 600, marginBottom: 5 }}>Traffic History</div>
+                <h3
+                    style={{
+                        borderBottom: "1px solid #444",
+                        paddingBottom: 5,
+                        marginTop: 15
+                    }}
+                >
+                    Traffic History
+                </h3>
                 <table
                     style={{
                         width: "100%",

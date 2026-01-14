@@ -19,6 +19,7 @@ export class InternetMonitor extends NetworkMonitor<Server, ServerMonitorData> {
         { id: 'wikipedia', hostname: 'Wikipedia', address: 'wikipedia.org' },
         { id: 'steam', hostname: 'Steam', address: 'store.steampowered.com' },
         { id: 'github', hostname: 'GitHub', address: 'github.com' },
+        { id: 'bilibili', hostname: 'Bilibili', address: 'bilibili.com' },
     ];
 
     protected getTargets(): Server[] {
