@@ -188,3 +188,19 @@ dotlottie-player {
     inherits: false;
     initial-value: 0%;
 }
+
+
+:root {
+    --color-table: rgb(112, 202, 209);
+    --color-accent: rgba(112, 202, 209, 0.1);
+    --color-bg-secondary: rgb(42, 42, 42);
+    --border-radius: 8px;
+}
+
+tbody > tr {
+    background-color: rgb(26, 26, 26)
+}
+
+th, td {
+    padding-left: 12px !important;
+}

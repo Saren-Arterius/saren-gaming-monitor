@@ -839,9 +839,10 @@ const NetworkModal = observer(() => {
             {activeTab === 0 && <NetworkContent />}
             {activeTab === 1 && <IoTContent />}
             {activeTab === 2 && <InternetContent />}
-            <div style={{ opacity: 0.6, fontSize: "0.8em", textAlign: "right", position: 'fixed', bottom: '1em', right: '3em' }}>
+            <div style={{ opacity: 0.6, fontSize: "0.8em", textAlign: "right", position: 'fixed', bottom: '1em', marginLeft: '-1.5em' }}>
                 Last updated: {formatTimeDiff(lastUpdated)}
             </div>
+            <div style={{ display: 'none' }}>{store.lastDataPushedAt}</div>
         </Modal>
     );
 });
@@ -897,25 +898,44 @@ const NetworkContent = observer(() => {
     };
     const tdStyle = { padding: "8px", borderBottom: "1px solid #222" };
     const numStyle = { ...tdStyle, textAlign: "right" };
-
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             <div
                 style={{
+                    marginBottom: 15,
+                    backgroundColor: "rgb(26, 26, 26)",
+                    borderRadius: 8,
+                    overflow: "hidden",
+                    border: "1px solid rgb(42, 42, 42)",
+                    padding: 15,
                     display: "flex",
-                    justifyContent: "space-between",
-                    flexWrap: "wrap",
-                    gap: 10
+                    gap: 20
                 }}
             >
-                <div>
-                    Active Connections: <strong>{store.io.activeConn}</strong>
+                <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: "0.9em", fontWeight: 600, marginBottom: 5, opacity: 0.8 }}>Recent Outages (24h)</div>
+                    {pingMetrics.outages.length === 0 ? (
+                        <div style={{ opacity: 0.5, fontSize: "0.85em" }}>None</div>
+                    ) : (
+                        <ul style={{ paddingLeft: 18, margin: 0, opacity: 0.8, fontSize: "0.85em" }}>
+                            {pingMetrics.outages
+                                .slice()
+                                .reverse()
+                                .map((o, i) => (
+                                    <li key={i}>
+                                        {formatShort(new Date(o.start))} ({Math.floor(o.duration_seconds / 60)}m{o.duration_seconds % 60}s)
+                                    </li>
+                                ))}
+                        </ul>
+                    )}
                 </div>
-                <div>
-                    Open Ports:{" "}
-                    <strong>
-                        {store.networkMetrics.internet_ports.map((s) => s.replace(/open/g, "").trim())?.join(", ") || "None"}
-                    </strong>
+                <div style={{ flex: 1, textAlign: "right", display: "flex", flexDirection: "column", justifyContent: "center", gap: 4 }}>
+                    <div>
+                        Active Conns: <strong>{store.io.activeConn}</strong>
+                    </div>
+                    <div style={{ fontSize: "0.9em", opacity: 0.8 }}>
+                        Open Ports: {store.networkMetrics.internet_ports.map((s) => s.replace(/open/g, "").trim())?.join(", ") || "None"}
+                    </div>
                 </div>
             </div>
 
@@ -982,25 +1002,6 @@ const NetworkContent = observer(() => {
                     </tbody>
                 </table>
             </div>
-
-            <div>
-                <div style={{ fontSize: "1.1em", fontWeight: 600, marginBottom: 5 }}>Recent Outages</div>
-                {pingMetrics.outages.length === 0 ? (
-                    <div style={{ opacity: 0.6 }}>None in last 24 hours</div>
-                ) : (
-                    <ul style={{ paddingLeft: 20, margin: 0, opacity: 0.8 }}>
-                        {pingMetrics.outages
-                            .slice()
-                            .reverse()
-                            .map((o, i) => (
-                                <li key={i}>
-                                    {formatShort(new Date(o.start))} – {formatShort(new Date(o.end))} (
-                                    {Math.floor(o.duration_seconds / 60)}m{o.duration_seconds % 60}s)
-                                </li>
-                            ))}
-                    </ul>
-                )}
-            </div>
         </div>
     );
 });
@@ -1020,7 +1021,7 @@ const InternetContent = observer(() => {
             {store.internetMetrics &&
                 store.internetMetrics.map((server) => {
                     const isExpanded = store.iotExpandedDevices && store.iotExpandedDevices[server.id];
-                    const currentStat = server.stats?.["15m"];
+                    const currentStat = server.stats?.["1m"];
                     const currentAvg = currentStat ? currentStat[3] : null;
                     const currentLoss = currentStat ? currentStat[0] : null;
 
@@ -1259,7 +1260,7 @@ const IoTContent = observer(() => {
             {store.iotMetrics &&
                 store.iotMetrics.map((device) => {
                     const isExpanded = store.iotExpandedDevices && store.iotExpandedDevices[device.mac];
-                    const currentStat = device.stats?.["15m"];
+                    const currentStat = device.stats?.["1m"];
                     const currentAvg = currentStat ? currentStat[3] : null;
                     const currentLoss = currentStat ? currentStat[0] : null;
 
