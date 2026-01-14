@@ -995,7 +995,7 @@ const NetworkContent = observer(() => {
     const isSmallScreen = store.windowWidth < SMALL_WIDTH || store.windowHeight < SMALL_HEIGHT;
 
     return (
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+        <div style={{ display: "flex", flexDirection: "column" }}>
             <div
                 style={{
                     marginBottom: 15,
