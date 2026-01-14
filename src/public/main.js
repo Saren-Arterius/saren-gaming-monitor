@@ -2,20 +2,12 @@ const SMALL_WIDTH = 540;
 const SMALL_HEIGHT = 420;
 const POWERSAVE_MS = 60000;
 const RELAX_BUFFER_MS = 995;
-const WAKE_WORD_SPEECH_TIMEOUT = 7000;
-const HA_URL = "https://" + location.host.replace("monitor-", "ha-");
-const EXIT_MAGIC = "XXEXITXX";
-const REFRESH_MAGIC = "XXREFRESHXX";
-const NIGHT_H = 22;
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const COLOR_STOPS = [
     { color: "#70CAD1", position: 0 },
     { color: "#F7EE7F", position: 50 },
     { color: "#A63D40", position: 100 }
 ];
-
-// State definitions
 const STATE = {
     INITIALIZING: 0,
     IDLE: 1,
@@ -29,7 +21,7 @@ const STORAGE_EXTRA_TEXT = [null, " ⚠️", " ⛔️"];
 
 // const { DotLottieReact } = dotlottie;
 const { useEffect, useState, useRef } = React;
-const { makeAutoObservable } = mobx;
+const { makeAutoObservable, autorun, reaction } = mobx;
 const { Observer, observer } = mobxReactLite;
 // const { Circle, Cpu, Activity } = require('react-feather');
 
@@ -72,15 +64,30 @@ const modalHeaderStyle = {
 };
 
 const Modal = ({ title, onClose, children, style }) => (
-    <div style={{ ...modalOverlayStyle, ...style }} onClick={onClose}>
-        <div className="container" style={modalContainerStyle} onClick={(e) => e.stopPropagation()}>
+    <div
+        style={{ ...modalOverlayStyle, ...style }}
+        onClick={(e) => {
+            // console.log('store.lastInteract = Date.now();')
+            store.lastInteract = Date.now();
+            onClose(e);
+        }}
+    >
+        <div
+            className="container"
+            style={modalContainerStyle}
+            onClick={(e) => {
+                // console.log('store.lastInteract = Date.now();')
+                store.lastInteract = Date.now();
+                e.stopPropagation();
+            }}
+        >
             <div style={modalHeaderStyle}>
                 <div style={{ fontSize: "1.2em", fontWeight: 600 }}>{title}</div>
                 <div style={{ cursor: "pointer", padding: 5, fontSize: "1.2em" }} onClick={onClose}>
                     ✕
                 </div>
             </div>
-            <div style={{ overflowY: "auto", padding: 20 }}>{children}</div>
+            <div style={{ overflowY: "auto", padding: 20, height: '100vh' }}>{children}</div>
         </div>
     </div>
 );
@@ -204,16 +211,12 @@ class Store {
     lastTTSAnimState = 0; // 1 = fading out, 2 = changing pos, 0 = fading in or stable;
     latestText = 0; // 0 = lastSTT, 1 = lastTTS
 
+    vadState = '';
     mainUI = null;
     _lastInteract = Date.now();
 
     initInfo = null;
-    networkMetrics = null;
-    iotMetrics = [];
-    showIotModal = false;
-    showNetworkModal = false;
     storageModalTarget = null; // 'system' | 'storage' | null
-    iotExpandedDevices = {};
 
     set vaState(value) {
         this._vaState = value;
@@ -278,6 +281,13 @@ class Store {
 }
 
 const store = new Store();
+
+reaction(
+    () => store.lastInteract,
+    (lastInteract) => {
+        console.log("store.lastInteract updated:", lastInteract);
+    }
+);
 
 function getColorAtPercent(percent) {
     let start = COLOR_STOPS[0];
@@ -483,7 +493,7 @@ const Gauge = ({
 };
 
 const shouldPowerSave = () => {
-    if (store.showNetworkModal || store.showIotModal || store.storageModalTarget) return false;
+    if (store.showNetworkModal || store.storageModalTarget) return false;
     return Date.now() - store.lastInteract > POWERSAVE_MS;
 };
 
@@ -636,572 +646,221 @@ const fullScreenOverlayStyle = {
 
 const StorageModal = observer(() => {
     const section = store.storageModalTarget;
-    const [displaySection, setDisplaySection] = useState(section);
     const { shouldRender, style } = useModalTransition(!!section);
-
-    useEffect(() => {
-        if (section) setDisplaySection(section);
-    }, [section]);
 
     if (!shouldRender) return null;
 
-    const target = section || displaySection;
-    if (!target) return null;
+    const tabStyle = (isActive) => ({
+        padding: "10px 15px",
+        cursor: "pointer",
+        borderBottom: isActive ? "2px solid #70CAD1" : "2px solid transparent",
+        color: isActive ? "#70CAD1" : "#aaa",
+        fontWeight: isActive ? "600" : "400",
+        transition: "all 0.2s ease"
+    });
 
+    const disks = Object.values(store.disks);
+
+    return (
+        <Modal
+            title={
+                <div style={{ display: "flex", borderBottom: "1px solid #333", marginBottom: -21, marginTop: -20, marginLeft: -20 }}>
+                    {disks.map((disk) => (
+                        <div
+                            key={disk.label}
+                            style={tabStyle(section === disk.label)}
+                            onClick={() => (store.storageModalTarget = disk.label)}
+                        >
+                            {disk.name}
+                        </div>
+                    ))}
+                </div>
+            }
+            onClose={() => (store.storageModalTarget = null)}
+            style={style}
+        >
+            <StorageHeader section={section} />
+            <StorageContent target={section} />
+            <div style={{ opacity: 0.6, fontSize: "0.8em", textAlign: "right", position: "fixed", bottom: "1em", marginLeft: "-1.5em" }}>
+                Last updated: {store.storageInfo[section] ? formatTimeDiff(store.storageInfo[section].lastUpdate) : "N/A"}
+            </div>
+        </Modal>
+    );
+});
+
+const StorageHeader = observer(({ section }) => {
+    useEffect(() => {
+        feather.replace();
+    }, [section]);
+
+    const data = store.storageInfo[section];
+    if (!data || !data.info) return null;
+
+    const info = data.info;
+    const status = info.status || 0;
+    const statusColor = STORAGE_TEXT_COLOR[status] || getColorAtPercent(0);
+    const isSmallScreen = store.windowWidth < SMALL_WIDTH || store.windowHeight < SMALL_HEIGHT;
+
+    return (
+        <div
+            style={{
+                marginBottom: 15,
+                backgroundColor: "rgb(26, 26, 26)",
+                borderRadius: 8,
+                overflow: "hidden",
+                border: "1px solid rgb(42, 42, 42)",
+                padding: 15,
+                display: "flex",
+                flexDirection: isSmallScreen ? "column" : "row",
+                gap: isSmallScreen ? 15 : 20
+            }}
+        >
+            <div style={{ flex: 1, borderBottom: isSmallScreen ? '1px solid #333' : 'none', borderRight: isSmallScreen ? 'none' : '1px solid #333', paddingRight: isSmallScreen ? 0 : 15, paddingBottom: isSmallScreen ? 15 : 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                    <i data-feather="activity" style={{ width: 14, height: 14, color: statusColor, opacity: 0.8 }}></i>
+                    <span style={{ fontSize: '0.8em', fontWeight: 600, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Status</span>
+                </div>
+                <div style={{ fontSize: '1.2em', fontWeight: 700, color: statusColor, fontFamily: 'monospace' }}>{info.statusText}</div>
+            </div>
+            <div style={{ flex: 1, borderBottom: isSmallScreen ? '1px solid #333' : 'none', borderRight: isSmallScreen ? 'none' : '1px solid #333', paddingRight: isSmallScreen ? 0 : 15, paddingBottom: isSmallScreen ? 15 : 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                    <i data-feather="alert-triangle" style={{ width: 14, height: 14, color: statusColor }}></i>
+                    <span style={{ fontSize: "0.8em", fontWeight: 600, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Recent Issues</span>
+                </div>
+                {info.issues.length === 0 ? (
+                    <div style={{ color: getColorAtPercent(0), fontSize: "0.85em", fontWeight: 500 }}>
+                        All systems operational
+                    </div>
+                ) : (
+                    <div style={{ maxHeight: 80, overflowY: 'auto', paddingRight: 5 }}>
+                        {info.issues.map((issue, i) => (
+                            <div key={i} style={{
+                                fontSize: "0.85em",
+                                marginBottom: 6,
+                                color: statusColor,
+                                fontFamily: 'monospace'
+                            }}>
+                                • {issue}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-start", gap: 12, paddingLeft: isSmallScreen ? 0 : 5 }}>
+                <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                        <i data-feather="database" style={{ width: 14, height: 14, color: '#eee', opacity: 0.6 }}></i>
+                        <span style={{ fontSize: '0.8em', fontWeight: 600, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Mount Points</span>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {data.paths.map((path, idx) => (
+                            <span key={idx} style={{
+                                fontSize: '0.85em',
+                                color: '#eee',
+                                fontFamily: 'monospace',
+                                fontWeight: 500
+                            }}>
+                                {path}
+                            </span>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+});
+
+const StorageContent = observer(({ target }) => {
+    if (!target) return null;
     const data = store.storageInfo[target];
 
     if (!data || !data.paths)
-        return (
-            <Modal title={`Storage Info (${target})`} onClose={() => (store.storageModalTarget = null)} style={style}>
-                No data.
-            </Modal>
-        );
+        return <div style={{ padding: 20 }}>No data.</div>;
 
     const info = data.info;
     const smart = info.metrics.smart;
     const fs = info.metrics.filesystem;
-    const lastUpdate = formatTimeDiff(data.lastUpdate);
 
     const tdStyle = { padding: 8, opacity: 0.8, width: "100%" };
     const tdRightStyle = { textAlign: "right" };
 
     return (
-        <Modal title={`Storage Info (${store.disks[target].name})`} onClose={() => (store.storageModalTarget = null)} style={style}>
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                <div style={{ opacity: 0.8 }}>Paths: {data.paths.join(", ")}</div>
-                <div style={{ opacity: 0.8 }}>
-                    Status: <strong>{info.statusText}</strong>
-                </div>
-                <div style={{ opacity: 0.6, fontSize: "0.9em" }}>Last updated: {lastUpdate}</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <h3
+                style={{
+                    borderBottom: "1px solid #444",
+                    paddingBottom: 5,
+                    marginTop: 15
+                }}
+            >
+                Drive Health
+            </h3>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <tbody>
+                    <tr>
+                        <td style={tdStyle}>Spare blocks</td>
+                        <td style={tdRightStyle}>{smart.spare.formatted}</td>
+                    </tr>
+                    <tr>
+                        <td style={tdStyle}>Wear level</td>
+                        <td style={tdRightStyle}>{smart.wear.formatted}</td>
+                    </tr>
+                    <tr>
+                        <td style={tdStyle}>Media errors</td>
+                        <td style={tdRightStyle}>{smart.mediaErrors.formatted}</td>
+                    </tr>
+                    <tr>
+                        <td style={tdStyle}>Age</td>
+                        <td style={tdRightStyle}>{smart.powerOnTime.formatted}</td>
+                    </tr>
+                    <tr>
+                        <td style={tdStyle}>Total written</td>
+                        <td style={tdRightStyle}>{smart.dataWritten.formatted}</td>
+                    </tr>
+                    <tr>
+                        <td style={tdStyle}>Total read</td>
+                        <td style={tdRightStyle}>{smart.dataRead.formatted}</td>
+                    </tr>
+                </tbody>
+            </table>
 
-                <h3
-                    style={{
-                        borderBottom: "1px solid #444",
-                        paddingBottom: 5,
-                        marginTop: 15
-                    }}
-                >
-                    Drive Health
-                </h3>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <tbody>
-                        <tr>
-                            <td style={tdStyle}>Spare blocks</td>
-                            <td style={tdRightStyle}>{smart.spare.formatted}</td>
-                        </tr>
-                        <tr>
-                            <td style={tdStyle}>Wear level</td>
-                            <td style={tdRightStyle}>{smart.wear.formatted}</td>
-                        </tr>
-                        <tr>
-                            <td style={tdStyle}>Media errors</td>
-                            <td style={tdRightStyle}>{smart.mediaErrors.formatted}</td>
-                        </tr>
-                        <tr>
-                            <td style={tdStyle}>Age</td>
-                            <td style={tdRightStyle}>{smart.powerOnTime.formatted}</td>
-                        </tr>
-                        <tr>
-                            <td style={tdStyle}>Total written</td>
-                            <td style={tdRightStyle}>{smart.dataWritten.formatted}</td>
-                        </tr>
-                        <tr>
-                            <td style={tdStyle}>Total read</td>
-                            <td style={tdRightStyle}>{smart.dataRead.formatted}</td>
-                        </tr>
-                    </tbody>
-                </table>
-
-                <h3
-                    style={{
-                        borderBottom: "1px solid #444",
-                        paddingBottom: 5,
-                        marginTop: 15
-                    }}
-                >
-                    BTRFS Status
-                </h3>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <tbody>
-                        <tr>
-                            <td style={tdStyle}>Write errors</td>
-                            <td style={tdRightStyle}>{fs.writeErrors}</td>
-                        </tr>
-                        <tr>
-                            <td style={tdStyle}>Read errors</td>
-                            <td style={tdRightStyle}>{fs.readErrors}</td>
-                        </tr>
-                        <tr>
-                            <td style={tdStyle}>Flush errors</td>
-                            <td style={tdRightStyle}>{fs.flushErrors}</td>
-                        </tr>
-                        <tr>
-                            <td style={tdStyle}>Corruption errors</td>
-                            <td style={tdRightStyle}>{fs.corruptionErrors}</td>
-                        </tr>
-                        <tr>
-                            <td style={tdStyle}>Generation errors</td>
-                            <td style={tdRightStyle}>{fs.generationErrors}</td>
-                        </tr>
-                    </tbody>
-                </table>
-
-                {info.issues.length > 0 && (
-                    <>
-                        <h3
-                            style={{
-                                borderBottom: "1px solid #444",
-                                paddingBottom: 5,
-                                marginTop: 15,
-                                color: "#ff6b6b"
-                            }}
-                        >
-                            Issues Found
-                        </h3>
-                        <ul style={{ paddingLeft: 20, color: "#ff6b6b" }}>
-                            {info.issues.map((issue, i) => (
-                                <li key={i}>{issue}</li>
-                            ))}
-                        </ul>
-                    </>
-                )}
-                {info.issues.length === 0 && <div style={{ marginTop: 15, color: "#51cf66" }}>No issues found.</div>}
-            </div>
-        </Modal>
+            <h3
+                style={{
+                    borderBottom: "1px solid #444",
+                    paddingBottom: 5,
+                    marginTop: 15
+                }}
+            >
+                BTRFS Status
+            </h3>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <tbody>
+                    <tr>
+                        <td style={tdStyle}>Write errors</td>
+                        <td style={tdRightStyle}>{fs.writeErrors}</td>
+                    </tr>
+                    <tr>
+                        <td style={tdStyle}>Read errors</td>
+                        <td style={tdRightStyle}>{fs.readErrors}</td>
+                    </tr>
+                    <tr>
+                        <td style={tdStyle}>Flush errors</td>
+                        <td style={tdRightStyle}>{fs.flushErrors}</td>
+                    </tr>
+                    <tr>
+                        <td style={tdStyle}>Corruption errors</td>
+                        <td style={tdRightStyle}>{fs.corruptionErrors}</td>
+                    </tr>
+                    <tr>
+                        <td style={tdStyle}>Generation errors</td>
+                        <td style={tdRightStyle}>{fs.generationErrors}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
     );
 });
 
-const NetworkModal = observer(() => {
-    const { shouldRender, style } = useModalTransition(store.showNetworkModal);
-    if (!shouldRender) return null;
-
-    const pingMetrics = store.networkMetrics.ping_statistics;
-    const trafficMetrics = store.networkMetrics.network_traffic;
-    const formatShort = (date) =>
-        new Intl.DateTimeFormat("en-US", {
-            month: "short",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false
-        })
-            .format(date)
-            .replace(/, (\d+):/, ", $1:");
-
-    // Process chart data
-    const periods = ["1m", "5m", "15m", "1h", "3h", "12h", "24h", "3d", "7d", "30d"];
-    const trafficRows = periods
-        .map((p) => {
-            const d = trafficMetrics.historical["last" + p];
-            if (!d) return null;
-            return {
-                p,
-                rxAvg: formatBytes(d.avg_rx_Bps, 1, "B/s"),
-                rxTot: formatBytes(d.cum_rx, 1, "B", true),
-                txAvg: formatBytes(d.avg_tx_Bps, 1, "B/s"),
-                txTot: formatBytes(d.cum_tx, 1, "B", true)
-            };
-        })
-        .filter((x) => x);
-
-    const pingPeriods = [
-        { l: "Now", k: "latest" },
-        { l: "1m", k: "last1m" },
-        { l: "5m", k: "last5m" },
-        { l: "1h", k: "last1h" },
-        { l: "24h", k: "last24h" }
-    ];
-
-    const thStyle = {
-        padding: "8px",
-        textAlign: "left",
-        borderBottom: "1px solid #444",
-        fontSize: "0.9em",
-        color: "#000",
-        opacity: 0.7
-    };
-    const tdStyle = { padding: "8px", borderBottom: "1px solid #222" };
-    const numStyle = { ...tdStyle, textAlign: "right" };
-
-    return (
-        <Modal title="Network Info" onClose={() => (store.showNetworkModal = false)} style={style}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-                <div
-                    style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        flexWrap: "wrap",
-                        gap: 10
-                    }}
-                >
-                    <div>
-                        Active Connections: <strong>{store.io.activeConn}</strong>
-                    </div>
-                    <div>
-                        Open Ports:{" "}
-                        <strong>
-                            {store.networkMetrics.internet_ports.map((s) => s.replace(/open/g, "").trim())?.join(", ") || "None"}
-                        </strong>
-                    </div>
-                </div>
-
-                <div>
-                    <div style={{ fontSize: "1.1em", fontWeight: 600, marginBottom: 5 }}>Ping Statistics</div>
-                    <table
-                        style={{
-                            width: "100%",
-                            borderCollapse: "collapse",
-                            fontSize: "0.9em"
-                        }}
-                    >
-                        <thead>
-                            <tr>
-                                <th style={thStyle}>Period</th>
-                                <th style={{ ...thStyle, textAlign: "right" }}>Latency</th>
-                                <th style={{ ...thStyle, textAlign: "right" }}>Packet Loss</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {pingPeriods.map((row) => {
-                                const lat = pingMetrics.latency[row.k];
-                                const loss = pingMetrics.packet_loss[row.k === "latest" ? "latest_percent" : row.k];
-                                return (
-                                    <tr key={row.l}>
-                                        <td style={{ ...tdStyle, width: "100%" }}>{row.l}</td>
-                                        <td style={numStyle}>{lat != null ? lat + "ms" : "N/A"}</td>
-                                        <td style={numStyle}>{loss != null ? loss + "%" : "N/A"}</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-
-                <div>
-                    <div style={{ fontSize: "1.1em", fontWeight: 600, marginBottom: 5 }}>Traffic History</div>
-                    <table
-                        style={{
-                            width: "100%",
-                            borderCollapse: "collapse",
-                            fontSize: "0.9em"
-                        }}
-                    >
-                        <thead>
-                            <tr>
-                                <th style={thStyle}>Time</th>
-                                <th style={{ ...thStyle, textAlign: "right" }}>RX Avg</th>
-                                <th style={{ ...thStyle, textAlign: "right" }}>RX Total</th>
-                                <th style={{ ...thStyle, textAlign: "right" }}>TX Avg</th>
-                                <th style={{ ...thStyle, textAlign: "right" }}>TX Total</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {trafficRows.map((row) => (
-                                <tr key={row.p}>
-                                    <td style={{ ...tdStyle, width: "100%" }}>{row.p}</td>
-                                    <td style={numStyle}>{row.rxAvg}</td>
-                                    <td style={numStyle}>{row.rxTot}</td>
-                                    <td style={numStyle}>{row.txAvg}</td>
-                                    <td style={numStyle}>{row.txTot}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-
-                <div>
-                    <div style={{ fontSize: "1.1em", fontWeight: 600, marginBottom: 5 }}>Recent Outages</div>
-                    {pingMetrics.outages.length === 0 ? (
-                        <div style={{ opacity: 0.6 }}>None in last 24 hours</div>
-                    ) : (
-                        <ul style={{ paddingLeft: 20, margin: 0, opacity: 0.8 }}>
-                            {pingMetrics.outages
-                                .slice()
-                                .reverse()
-                                .map((o, i) => (
-                                    <li key={i}>
-                                        {formatShort(new Date(o.start))} – {formatShort(new Date(o.end))} (
-                                        {Math.floor(o.duration_seconds / 60)}m{o.duration_seconds % 60}s)
-                                    </li>
-                                ))}
-                        </ul>
-                    )}
-                </div>
-
-                <div style={{ opacity: 0.6, fontSize: "0.8em", textAlign: "right" }}>
-                    Last updated: {formatTimeDiff(store.networkMetrics?.last_updated)}
-                </div>
-
-                <div style={{ display: "flex", justifyContent: "center", marginTop: 10 }}>
-                    <button
-                        style={{
-                            padding: "10px 20px",
-                            backgroundColor: "rgba(255,255,255,0.1)",
-                            borderRadius: 8,
-                            cursor: "pointer",
-                            border: "1px solid rgba(255,255,255,0.2)",
-                            color: "white",
-                            fontWeight: 600,
-                            fontSize: "1em"
-                        }}
-                        onClick={() => {
-                            store.iotExpandedDevices = {};
-                            store.showNetworkModal = false;
-                            store.showIotModal = true;
-                        }}
-                    >
-                        View IoT Device Metrics
-                    </button>
-                </div>
-            </div>
-        </Modal>
-    );
-});
-
-const iotPingColor = (pAvg, pLoss) =>
-    getColorAtPercent(Math.min(100, Math.max((pAvg || 0) ** 1.5 / 50, pLoss || 0)));
-
-const IoTModal = observer(() => {
-    const { shouldRender, style } = useModalTransition(store.showIotModal);
-    if (!shouldRender) return null;
-
-    const tdStyle = { padding: "8px", borderBottom: "1px solid #222" };
-    const thStyle = {
-        padding: "8px",
-        textAlign: "left",
-        borderBottom: "1px solid #444",
-        fontSize: "0.9em",
-        color: "#000",
-        opacity: 0.7
-    };
-    return (
-        <Modal title="IoT Device Metrics" onClose={() => (store.showIotModal = false)} style={style}>
-            {store.iotMetrics &&
-                store.iotMetrics.map((device) => {
-                    const isExpanded = store.iotExpandedDevices && store.iotExpandedDevices[device.mac];
-                    const currentStat = device.stats?.["15m"];
-                    const currentAvg = currentStat ? currentStat[3] : null;
-                    const currentLoss = currentStat ? currentStat[0] : null;
-
-                    return (
-                        <div
-                            key={device.mac}
-                            style={{
-                                marginBottom: 15,
-                                backgroundColor: "#1a1a1a",
-                                borderRadius: 8,
-                                overflow: "hidden",
-                                border: "1px solid #2a2a2a"
-                            }}
-                        >
-                            <div
-                                style={{
-                                    padding: 15,
-                                    cursor: "pointer",
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    gap: 10
-                                }}
-                                onClick={() => {
-                                    store.iotExpandedDevices = {
-                                        ...(store.iotExpandedDevices || {}),
-                                        [device.mac]: !isExpanded
-                                    };
-                                }}
-                            >
-                                <div
-                                    style={{
-                                        display: "flex",
-                                        justifyContent: "space-between",
-                                        alignItems: "center"
-                                    }}
-                                >
-                                    <div>
-                                        <div style={{ fontWeight: 600, color: "#eee" }}>
-                                            {device.hostname || "Unknown Host"}
-                                        </div>
-                                        <div style={{ fontSize: "0.8em", opacity: 0.6, marginTop: 2 }}>
-                                            {device.ip} • <span style={{ fontFamily: "monospace" }}>{device.mac}</span>
-                                        </div>
-                                    </div>
-                                    <div
-                                        style={{
-                                            fontSize: "0.9em",
-                                            opacity: 0.8,
-                                            textAlign: "right"
-                                        }}
-                                    >
-                                        {currentStat ? (
-                                            <>
-                                                <span style={{ color: iotPingColor(currentAvg, currentLoss) }}>
-                                                    {currentAvg}ms
-                                                </span>
-                                                <br />
-                                                <span style={{ fontSize: "0.8em", opacity: 0.7 }}>{currentLoss}% loss</span>
-                                            </>
-                                        ) : (
-                                            <span style={{ opacity: 0.4 }}>N/A</span>
-                                        )}
-                                    </div>
-                                </div>
-                                <div
-                                    style={{
-                                        display: "flex",
-                                        height: 6,
-                                        width: "100%",
-                                        borderRadius: 3,
-                                        overflow: "hidden",
-                                        gap: 0,
-                                        backgroundColor: "#111"
-                                    }}
-                                >
-                                    {device.history &&
-                                        device.history.slice(-30).map((stat, i, arr) => {
-                                            const avg = stat[3];
-                                            const loss = stat[0];
-                                            const color = iotPingColor(avg, loss);
-                                            return (
-                                                <div
-                                                    key={i}
-                                                    title={`${avg}ms`}
-                                                    style={{
-                                                        flex: 1,
-                                                        backgroundColor: color,
-                                                        opacity: 0.2 + 0.8 * (i / arr.length)
-                                                    }}
-                                                ></div>
-                                            );
-                                        })}
-                                </div>
-                            </div>
-                            {isExpanded && (
-                                <div
-                                    style={{
-                                        padding: "0 15px 15px 15px",
-                                        fontSize: "0.85em",
-                                        borderTop: "1px solid #2a2a2a",
-                                        marginTop: -5,
-                                        paddingTop: 10
-                                    }}
-                                >
-                                    <table
-                                        style={{
-                                            width: "100%",
-                                            borderCollapse: "collapse",
-                                            opacity: 0.9
-                                        }}
-                                    >
-                                        <thead>
-                                            <tr
-                                                style={{
-                                                    borderBottom: "1px solid #333",
-                                                    textAlign: "left",
-                                                    color: "#000"
-                                                }}
-                                            >
-                                                <th style={{ ...thStyle }}>Period</th>
-                                                <th
-                                                    style={{
-                                                        ...thStyle,
-                                                        textAlign: "right"
-                                                    }}
-                                                >
-                                                    Ping (Avg)
-                                                </th>
-                                                <th
-                                                    style={{
-                                                        ...thStyle,
-                                                        textAlign: "right"
-                                                    }}
-                                                >
-                                                    Loss
-                                                </th>
-                                                <th
-                                                    style={{
-                                                        ...thStyle,
-                                                        textAlign: "right"
-                                                    }}
-                                                >
-                                                    Min / Max
-                                                </th>
-                                                <th
-                                                    style={{
-                                                        ...thStyle,
-                                                        textAlign: "right"
-                                                    }}
-                                                >
-                                                    Jitter
-                                                </th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {["1m", "5m", "15m", "1h", "3h", "12h", "24h"].map((k) => {
-                                                const stat = device.stats?.[k];
-                                                if (!stat) return null;
-                                                return (
-                                                    <tr key={k} style={{ borderBottom: "1px solid #222" }}>
-                                                        <td
-                                                            style={{
-                                                                ...tdStyle,
-                                                                width: "100%",
-                                                                color: k === "1m" ? "#fff" : "#aaa"
-                                                            }}
-                                                        >
-                                                            {k}
-                                                        </td>
-                                                        <td style={{ ...tdStyle, textAlign: "right" }}>{stat[3]}ms</td>
-                                                        <td
-                                                            style={{
-                                                                ...tdStyle,
-                                                                textAlign: "right",
-                                                                color: stat[0] > 0 ? "#ff5555" : "inherit"
-                                                            }}
-                                                        >
-                                                            {stat[0]}%
-                                                        </td>
-                                                        <td
-                                                            style={{
-                                                                ...tdStyle,
-                                                                textAlign: "right",
-                                                                opacity: 0.7
-                                                            }}
-                                                        >
-                                                            {stat[1]}ms / {stat[2]}ms
-                                                        </td>
-                                                        <td
-                                                            style={{
-                                                                ...tdStyle,
-                                                                textAlign: "right",
-                                                                opacity: 0.7
-                                                            }}
-                                                        >
-                                                            {stat[4]}ms
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-                        </div>
-                    );
-                })}
-            {(!store.iotMetrics || store.iotMetrics.length === 0) && (
-                <div
-                    style={{
-                        padding: 40,
-                        textAlign: "center",
-                        opacity: 0.5,
-                        fontStyle: "italic"
-                    }}
-                >
-                    No IoT devices are currently being monitored.
-                </div>
-            )}
-        </Modal>
-    );
-});
 
 const AlertOverlay = observer(() => {
     const shouldShow = !shouldPowerSave() && store.alertMessage && store.alertExpire > Math.max(store.uiPollingTimestamp, Date.now());
@@ -1259,155 +918,63 @@ const AlertOverlay = observer(() => {
     );
 });
 
-const NetworkBars = observer(({ isSmallLandscape }) => {
-    if (!store.networkMetrics) return (<div></div>);
-    console.log("NetworkBars");
-    const minuteHistory = store.networkMetrics?.ping_statistics?.minute_history || [];
-    const trafficHistory = store.networkMetrics?.network_traffic?.minute_history || [];
-    const pingStatistics = store.networkMetrics?.ping_statistics;
-    const internetPorts = store.networkMetrics?.internet_ports || [];
-    const networkLastUpdated = store.networkMetrics?.last_updated;
-    console.log("NetworkBars", minuteHistory);
+
+const FullscreenButton = () => {
+    const [isFullscreen, setIsFullscreen] = useState(!!document.fullscreenElement);
+
+    useEffect(() => {
+        const handler = () => setIsFullscreen(!!document.fullscreenElement);
+        document.addEventListener("fullscreenchange", handler);
+        return () => document.removeEventListener("fullscreenchange", handler);
+    }, []);
+
+    const toggleFullscreen = (e) => {
+        e.stopPropagation();
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen();
+        } else if (document.exitFullscreen) {
+            document.exitFullscreen();
+        }
+        store.lastInteract = Date.now();
+    };
+
+    if (isFullscreen) return null;
+    if (store.showNetworkModal || store.storageModalTarget) return null;
 
     return (
         <div
+            onClick={toggleFullscreen}
             style={{
-                width: "100%",
-                paddingTop: isSmallLandscape ? 8 : 16,
-                paddingBottom: 16,
+                position: "fixed",
+                right: "20px",
+                bottom: "20px",
+                width: "50px",
+                height: "50px",
+                backgroundColor: "rgba(0, 0, 0, 0.5)",
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "24px",
                 cursor: "pointer",
-                transition: "transform 0.2s ease-in-out, filter 0.2s ease-in-out"
+                zIndex: 100,
+                backdropFilter: "blur(4px)",
+                userSelect: "none",
+                transition: "transform 0.2s ease, opacity 0.2s ease"
             }}
-            onMouseEnter={
-                window.matchMedia("(hover: hover) and (pointer: fine)").matches
-                    ? (e) => {
-                        e.currentTarget.style.transform = "scale(1.02)";
-                        e.currentTarget.style.filter = "brightness(1.5)";
-                    }
-                    : undefined
-            }
-            onMouseLeave={
-                window.matchMedia("(hover: hover) and (pointer: fine)").matches
-                    ? (e) => {
-                        e.currentTarget.style.transform = "scale(1)";
-                        e.currentTarget.style.filter = "brightness(1)";
-                    }
-                    : undefined
-            }
-            onClick={() => {
-                store.showNetworkModal = true
+            onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "scale(1.1)";
+                e.currentTarget.style.backgroundColor = "rgba(0, 0, 0, 0.8)";
+            }}
+            onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "scale(1)";
+                e.currentTarget.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
             }}
         >
-            <div style={{ borderRadius: 10, overflow: "hidden" }}>
-                <div
-                    style={{
-                        display: "flex",
-                        height: 17,
-                        width: "100%",
-                        gap: 0,
-                        backgroundColor: "#111",
-                        justifyContent: "space-between",
-                        zIndex: 2
-                    }}
-                >
-                    {minuteHistory.map((h, i, arr) => (
-                        <div
-                            key={i}
-                            style={{
-                                flex: 1,
-                                opacity: 1 - (arr.length - (i + 1)) * 0.015,
-                                backgroundColor:
-                                    h.latency_ms === null || h.latency_ms === -1
-                                        ? "#444444"
-                                        : getColorAtPercent(
-                                            Math.min(100, Math.max(h.latency_ms ** 2 / 10, h.packet_loss_percent))
-                                        )
-                            }}
-                        ></div>
-                    ))}
-                </div>
-                {trafficHistory.length > 0 && (
-                    <div style={{ width: "100%", paddingTop: 1 }}>
-                        <div
-                            style={{
-                                display: "flex",
-                                height: 3,
-                                width: "100%",
-                                overflow: "hidden",
-                                gap: 0,
-                                backgroundColor: "#111",
-                                justifyContent: "space-between",
-                                zIndex: 2
-                            }}
-                        >
-                            {trafficHistory.map((h, i, arr) => {
-                                let traffic = h.avg_rx_Bps + h.avg_tx_Bps;
-                                let pct = Math.min(
-                                    100,
-                                    Math.max(
-                                        (h.avg_rx_Bps / store.GAUGE_LIMITS.io.networkRx.max) ** 0.7 * 100,
-                                        (h.avg_tx_Bps / store.GAUGE_LIMITS.io.networkTx.max) ** 0.7 * 100
-                                    ),
-                                );
-                                return (
-                                    <div
-                                        key={i}
-                                        title={``}
-                                        style={{
-                                            flex: 1,
-                                            opacity: 1 - (arr.length - (i + 1)) * 0.015,
-                                            backgroundColor: traffic === 0 ? "#444444" : getColorAtPercent(pct)
-                                        }}
-                                    ></div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
-            </div>
-            {pingStatistics && (
-                <div
-                    style={{
-                        zIndex: 2,
-                        marginTop: 4,
-                        justifyContent: "space-between",
-                        position: "relative",
-                        fontSize: "0.8em",
-                        display: "flex"
-                    }}
-                >
-                    <div style={{ fontWeight: 400, opacity: 0.5, marginLeft: -2 }}>
-                        {internetPorts.map((s) => s.replace(/open/g, "").trim()).join(", ")}
-                    </div>
-                    <div
-                        style={{
-                            fontWeight: 400,
-                            opacity: 0.8,
-                            marginRight: -2,
-                            color: getColorAtPercent(
-                                Math.min(
-                                    100,
-                                    Math.max(
-                                        (pingStatistics.latency.last1m || pingStatistics.latency.latest || 0) ** 2 / 10,
-                                        pingStatistics.packet_loss.last1m || 0
-                                    )
-                                )
-                            )
-                        }}
-                    >
-                        {networkLastUpdated && Date.now() - networkLastUpdated > 12000 && (
-                            <>{formatTimeDiff(networkLastUpdated)} •&nbsp;</>
-                        )}
-                        {store.io.activeConn} conns •&nbsp;
-                        {(pingStatistics.latency.last1m || pingStatistics.latency.latest || 0)?.toFixed(1)}
-                        ms •&nbsp;
-                        {(pingStatistics.packet_loss.last1m || 0)?.toFixed(1)}% loss
-                    </div>
-                </div>
-            )}
+            🖼
         </div>
     );
-});
+};
 
 const Monitor = observer(() => {
     let loadLevel = 0;
@@ -1644,18 +1211,16 @@ const Monitor = observer(() => {
                         </div>
                     </div>
                 </div>
-                <NetworkBars isSmallLandscape={isSmallLandscape} />
             </div>
 
             {!shouldPowerSave() && (
                 <>
-                    <NetworkModal />
-                    <IoTModal />
                     <StorageModal />
                     <AlertOverlay />
                 </>
             )}
             <FullScreenStatus />
+            <FullscreenButton />
         </>
     );
 });
@@ -1702,884 +1267,12 @@ let saveToMobxStore = (label) => (data) => {
 socket.on("storageInfo", saveToMobxStore("storageInfo"));
 socket.on("initInfo", saveToMobxStore("initInfo"));
 socket.on("metrics", saveToMobxStore("metrics"));
-socket.on("networkMetrics", saveToMobxStore("networkMetrics"));
-socket.on("iotMetrics", saveToMobxStore("iotMetrics"));
 
 socket.on("connect", () => console.log("Connected to server"));
 
 window.addEventListener("resize", () => {
     store.windowWidth = window.innerWidth;
     store.windowHeight = window.innerHeight;
-});
-
-// Global state variables
-let myvad = null;
-let haWebSocket = null;
-let bumblebee = null;
-
-let currentMessageId = 0;
-let pipelineActive = false; // Still useful to indicate active HA pipeline communication
-let haReadyForAudio = false;
-let currentPipelineRunId = null;
-let currentPipelineListRequestId = null;
-let currentDeviceConfigRequestId = null;
-let sttBinaryHandlerId = null;
-
-let wakeWordTimeoutId = null;
-let ttsAudioElement = null; // To control TTS playback
-let conversationId = newConversationId();
-// Configuration - HA_URL is constant, TOKEN and PIPELINE_NAME are fetched
-let HA_TOKEN = null;
-let HA_ASSIST_PIPELINE_NAME = null;
-
-// --- Helper Functions ---
-function getStateName(stateValue) {
-    return Object.keys(STATE).find((key) => STATE[key] === stateValue) || "UNKNOWN_STATE";
-}
-
-// --- State Management ---
-function setVAState(newState, ...args) {
-    const oldState = store.vaState;
-    // if (oldState === newState) return; // Usually, but some states might re-run entry logic
-
-    console.log(
-        `State transition: ${getStateName(oldState)} -> ${getStateName(newState)} ${args.length > 0 ? JSON.stringify(args) : ""}`
-    );
-    store.vaState = newState;
-
-    // Clear any state-specific timers/handlers from the OLD state
-    if (wakeWordTimeoutId) {
-        clearTimeout(wakeWordTimeoutId);
-        wakeWordTimeoutId = null;
-    }
-
-    if (oldState === STATE.PLAYING_TTS && newState !== STATE.PLAYING_TTS) {
-        if (ttsAudioElement) {
-            console.log("Stopping TTS audio due to state change from PLAYING_TTS.");
-            ttsAudioElement.pause();
-            ttsAudioElement.src = "";
-            ttsAudioElement.onended = null;
-            ttsAudioElement.onerror = null;
-            ttsAudioElement = null;
-        }
-    }
-
-    // Actions for ENTERING the new state
-    switch (newState) {
-        case STATE.INITIALIZING:
-            break;
-
-        case STATE.IDLE:
-            pipelineActive = false;
-            resetAudioStreamingState();
-
-            if (myvad && myvad.listening) {
-                console.log("STATE.IDLE: VAD was listening, pausing it.");
-                myvad.pause();
-            }
-
-            if (oldState >= STATE.WAKE_WORD_TRIGGERED) {
-                new Audio("/cancel.mp3").play().catch((e) => console.error("Error playing cancel.mp3:", e));
-            }
-
-            if (bumblebee) {
-                bumblebee.start();
-            }
-
-            break;
-
-        case STATE.WAKE_WORD_TRIGGERED:
-            pipelineActive = false;
-            store.isUserSpeaking = false;
-            exitPowerSaveIfNeeded();
-
-            const startVADAndSetTimeout = async () => {
-                if (store.vaState !== STATE.WAKE_WORD_TRIGGERED) return; // State changed
-
-                if (!myvad) {
-                    console.error("STATE.WAKE_WORD_TRIGGERED: VAD not initialized!");
-                    panelAlert("Voice detection system is not ready.");
-                    setVAState(STATE.IDLE);
-                    return;
-                }
-
-                if (!myvad.listening) {
-                    console.log("STATE.WAKE_WORD_TRIGGERED: Starting VAD listening.");
-                    myvad.start();
-                } else {
-                    console.log("STATE.WAKE_WORD_TRIGGERED: VAD already listening.");
-                }
-
-                new Audio("/activate.mp3").play().catch((e) => console.error("Error playing activate.mp3:", e));
-
-                wakeWordTimeoutId = setTimeout(() => {
-                    if (store.vaState === STATE.WAKE_WORD_TRIGGERED && !pipelineActive) {
-                        // No speech started
-                        console.log("Wake word timeout: No speech detected (onSpeechStart not called).");
-                        // panelAlert("No speech detected. Please try again.");
-                        if (myvad && myvad.listening) myvad.pause();
-                        setVAState(STATE.IDLE);
-                    }
-                }, WAKE_WORD_SPEECH_TIMEOUT);
-            };
-
-            (async () => {
-                if (store.vaState !== STATE.WAKE_WORD_TRIGGERED) return;
-
-                if (!haWebSocket || haWebSocket.readyState !== WebSocket.OPEN) {
-                    console.log("STATE.WAKE_WORD_TRIGGERED: WebSocket not open. Attempting to connect...");
-                    try {
-                        await connectWebSocket();
-                        if (store.vaState !== STATE.WAKE_WORD_TRIGGERED) return; // State changed
-                        if (!myvad) await initializeVAD();
-                        if (store.vaState === STATE.WAKE_WORD_TRIGGERED) startVADAndSetTimeout();
-                    } catch (err) {
-                        console.error("STATE.WAKE_WORD_TRIGGERED: Error ensuring WS/VAD readiness:", err);
-                        panelAlert("Failed to prepare for voice input: " + err.message);
-                        if (store.vaState === STATE.WAKE_WORD_TRIGGERED) setVAState(STATE.IDLE);
-                    }
-                } else if (!myvad) {
-                    console.log("STATE.WAKE_WORD_TRIGGERED: VAD not initialized. Attempting VAD init...");
-                    try {
-                        await initializeVAD();
-                        if (store.vaState === STATE.WAKE_WORD_TRIGGERED) startVADAndSetTimeout();
-                    } catch (err) {
-                        console.error("STATE.WAKE_WORD_TRIGGERED: Error initializing VAD:", err);
-                        panelAlert("Failed to initialize voice detection: " + err.message);
-                        if (store.vaState === STATE.WAKE_WORD_TRIGGERED) setVAState(STATE.IDLE);
-                    }
-                } else {
-                    if (store.vaState === STATE.WAKE_WORD_TRIGGERED) startVADAndSetTimeout();
-                }
-            })();
-            break;
-
-        case STATE.SENDING_AUDIO:
-            exitPowerSaveIfNeeded();
-            if (!pipelineActive) {
-                console.warn("STATE.SENDING_AUDIO: Entered but pipelineActive is false. Reverting to IDLE.");
-                setVAState(STATE.IDLE);
-                return;
-            }
-            new Audio("/analyzing.mp3").play().catch((e) => console.error("Error playing analyzing.mp3:", e));
-
-            console.log("STATE.SENDING_AUDIO: Waiting for Home Assistant response.");
-            // VAD should have been paused by onSpeechEnd
-            break;
-
-        case STATE.PLAYING_TTS:
-            exitPowerSaveIfNeeded();
-            const ttsUrl = args[0];
-            if (!ttsUrl) {
-                console.error("STATE.PLAYING_TTS: No TTS URL provided.");
-                setVAState(STATE.WAKE_WORD_TRIGGERED);
-                return;
-            }
-
-            pipelineActive = false; // HA interaction part is done
-
-            if (ttsAudioElement) {
-                // Clear any previous TTS
-                ttsAudioElement.pause();
-                ttsAudioElement.src = "";
-                ttsAudioElement.onended = null;
-                ttsAudioElement.onerror = null;
-            }
-
-            console.log("STATE.PLAYING_TTS: Playing TTS from URL:", ttsUrl);
-            ttsAudioElement = new Audio(ttsUrl);
-            if (store.lastTTSLength > 20) {
-                ttsAudioElement.playbackRate = 1.5; // Set playback speed to 1.5x
-            } else {
-                ttsAudioElement.playbackRate = 1.25;
-            }
-            ttsAudioElement.onended = () => {
-                console.log("TTS playback naturally ended.");
-                ttsAudioElement = null;
-                if (store.vaState === STATE.PLAYING_TTS) {
-                    setVAState(STATE.WAKE_WORD_TRIGGERED);
-                }
-            };
-            ttsAudioElement.onerror = (e) => {
-                console.error("Error playing TTS audio:", e);
-                panelAlert("Error playing assistant response.");
-                ttsAudioElement = null;
-                if (store.vaState === STATE.PLAYING_TTS) {
-                    setVAState(STATE.WAKE_WORD_TRIGGERED);
-                }
-            };
-            ttsAudioElement.play().catch((e) => {
-                console.error("Error initiating TTS playback:", e);
-                panelAlert("Could not play assistant response.");
-                ttsAudioElement = null;
-                if (store.vaState === STATE.PLAYING_TTS) {
-                    setVAState(STATE.WAKE_WORD_TRIGGERED);
-                }
-            });
-            break;
-    }
-}
-
-// --- Configuration Fetching ---
-function getConfigValue(paramName, storageKey) {
-    const urlParams = new URLSearchParams(window.location.search);
-    const valueFromUrl = urlParams.get(paramName);
-    if (valueFromUrl) {
-        localStorage.setItem(storageKey, valueFromUrl);
-        urlParams.delete(paramName);
-        const newSearch = urlParams.toString();
-        const newUrl = window.location.pathname + (newSearch ? "?" + newSearch : "");
-        window.history.replaceState({}, document.title, newUrl);
-        return valueFromUrl;
-    }
-    return localStorage.getItem(storageKey);
-}
-
-function getHAToken() {
-    return getConfigValue("token", "ha_token");
-}
-function getHAPipelineName() {
-    return getConfigValue("pipeline_name", "ha_pipeline_name");
-}
-
-// --- Main Application Initialization ---
-async function initializeApp() {
-    setVAState(STATE.INITIALIZING); // Set initial state
-    console.log("Initializing application...");
-
-    HA_TOKEN = getHAToken();
-    HA_ASSIST_PIPELINE_NAME = getHAPipelineName();
-
-    if (!HA_TOKEN || !HA_ASSIST_PIPELINE_NAME) {
-        // ... (alert logic as before) ...
-        // panelAlert("Configuration incomplete. Please set Token and Pipeline Name.");
-        console.error("Configuration incomplete.");
-        return;
-    }
-    console.log("HA Token and Pipeline Name found.");
-
-    try {
-        bumblebee = new Bumblebee();
-        bumblebee.setWorkersPath("/vendor/bumblebee/workers");
-        bumblebee.addHotword("jarvis");
-        bumblebee.addHotword("bumblebee");
-        bumblebee.setSensitivity(0.3);
-        bumblebee.on("hotword", handleHotword);
-        console.log("Bumblebee initialized.");
-    } catch (error) {
-        console.error("Failed to initialize Bumblebee:", error);
-        panelAlert("Error initializing hotword engine: " + error.message);
-        return;
-    }
-
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach((track) => track.stop());
-        console.log("Microphone permission granted.");
-    } catch (err) {
-        console.error("Microphone permission denied:", err);
-        panelAlert("Microphone access is required: " + err.message);
-        return;
-    }
-
-    try {
-        await connectWebSocket(); // This also attempts VAD initialization on auth_ok
-        console.log("HA WebSocket connection established, VAD init process started.");
-    } catch (error) {
-        console.error("Failed to establish initial HA connection or init VAD:", error);
-        panelAlert("Could not connect to Home Assistant or init voice: " + error.message);
-        // Allow Bumblebee to start; hotword might trigger successful connection
-    }
-
-    if (bumblebee) {
-        try {
-            await bumblebee.start();
-            console.log("Bumblebee listening for hotword.");
-        } catch (error) {
-            console.error("Failed to start Bumblebee listening:", error);
-            panelAlert("Failed to start hotword detection: " + error.message);
-        }
-    }
-    setVAState(STATE.IDLE); // Transition to IDLE if all critical steps passed or are recoverable
-    console.log("Application initialized. Current state: IDLE");
-}
-
-// --- Event Handlers and Core Logic ---
-
-function resetAll() {
-    pipelineActive = false;
-    resetAudioStreamingState();
-    conversationId = newConversationId();
-    setVAState(STATE.IDLE);
-    panelAlert(
-        null,
-        <h1>
-            <center>AI Reset Success</center>
-        </h1>,
-        3000
-    );
-}
-
-async function handleHotword(hotwordDetails) {
-    const hotword = typeof hotwordDetails === "string" ? hotwordDetails : hotwordDetails.hotword;
-    console.log(`Hotword '${hotword}' detected. Current state: ${getStateName(store.vaState)}.`);
-    if (hotword === "bumblebee") {
-        resetAll();
-        return;
-    }
-    if (Date.now() - store.voiceLastActiveAt > 300 * 1000) {
-        console.log("Resetting conversation");
-        conversationId = newConversationId();
-    }
-    store.voiceLastActiveAt = Date.now();
-    store.lastSTT = "";
-    store.lastTTS = "幫緊你幫緊你...";
-
-    if (store.vaState === STATE.SENDING_AUDIO || (store.vaState === STATE.WAKE_WORD_TRIGGERED && pipelineActive)) {
-        console.log("Pipeline or VAD already processing speech for HA. Ignoring hotword.");
-        return;
-    }
-
-    // Re-check config
-    HA_TOKEN = getHAToken();
-    HA_ASSIST_PIPELINE_NAME = getHAPipelineName();
-    if (!HA_TOKEN || !HA_ASSIST_PIPELINE_NAME) {
-        panelAlert("HA Token or Pipeline Name missing. Cannot process hotword.");
-        setVAState(STATE.IDLE); // Revert to idle if config is lost
-        return;
-    }
-
-    if (store.vaState === STATE.PLAYING_TTS) {
-        console.log("Hotword detected while TTS playing. Stopping TTS and proceeding.");
-        // setState will handle stopping TTS audio when transitioning from PLAYING_TTS
-    }
-
-    setVAState(STATE.WAKE_WORD_TRIGGERED, hotwordDetails);
-}
-
-function connectWebSocket() {
-    return new Promise((resolve, reject) => {
-        if (haWebSocket && haWebSocket.readyState === WebSocket.OPEN) {
-            console.log("connectWebSocket: Already open.");
-            if (!myvad) {
-                initializeVAD()
-                    .then(resolve)
-                    .catch((err) => {
-                        console.error("VAD initialization failed on existing open WebSocket:", err);
-                        reject(err);
-                    });
-            } else {
-                resolve();
-            }
-            return;
-        }
-        if (haWebSocket && haWebSocket.readyState === WebSocket.CONNECTING) {
-            reject(new Error("WebSocket connection already in progress."));
-            return;
-        }
-        if (!HA_TOKEN) {
-            reject(new Error("Home Assistant Token not available for WebSocket."));
-            return;
-        }
-
-        console.log("Connecting to Home Assistant WebSocket...");
-        const wsUrl = HA_URL.replace(/^http/, "ws") + "/api/websocket";
-        haWebSocket = new WebSocket(wsUrl);
-
-        haWebSocket.onopen = () => console.log("WebSocket connection opened.");
-        haWebSocket.onmessage = (event) => {
-            const message = JSON.parse(event.data);
-            switch (message.type) {
-                case "auth_required":
-                    console.log("WebSocket: Auth required.");
-                    if (HA_TOKEN) {
-                        haWebSocket.send(JSON.stringify({ type: "auth", access_token: HA_TOKEN }));
-                    } else {
-                        console.error("WebSocket: Auth required but HA_TOKEN missing.");
-                        haWebSocket.close();
-                        reject(new Error("Session token unavailable during auth."));
-                    }
-                    break;
-                case "auth_ok":
-                    console.log("WebSocket: Authentication successful.");
-                    initializeVAD()
-                        .then(() => {
-                            console.log("VAD initialized successfully post-auth.");
-                            requestDeviceAndPipelineInfo();
-                            resolve();
-                        })
-                        .catch((vadError) => {
-                            console.error("VAD initialization failed after auth_ok:", vadError);
-                            // Resolve WS connection, but VAD is an issue. App might still work for non-VAD things.
-                            // Or reject depending on how critical VAD is for this promise.
-                            // For connectWebSocket, successful auth is key. VAD can be re-attempted.
-                            resolve();
-                            // reject(new Error('VAD initialization failed: ' + vadError.message));
-                        });
-                    break;
-                case "auth_invalid":
-                    console.error("WebSocket: Authentication failed - invalid token.");
-                    localStorage.removeItem("ha_token");
-                    HA_TOKEN = null;
-                    panelAlert("HA token is invalid. Please provide a new token and refresh.");
-                    haWebSocket.close();
-                    reject(new Error("WebSocket auth failed: Invalid token."));
-                    break;
-                case "result":
-                    if (message.id === currentPipelineRunId && !message.success) {
-                        console.error("HA WS: assist_pipeline/run command failed:", message.error);
-                        // State change to IDLE will be handled by 'error' event or 'run-end'
-                        // but if that doesn't come, this is a fallback issue.
-                        // If pipelineActive, and no error event follows, this is a problem.
-                        // For now, rely on pipeline events.
-                    } // ... other result handling
-
-                    if (message.id === currentPipelineListRequestId) {
-                        if (message.success) console.log("VA: Available HA Pipelines:", message.result.pipelines);
-                        else console.error("HA WS: Failed to list pipelines:", message.error);
-                    } else if (message.id === currentDeviceConfigRequestId) {
-                        if (message.success) {
-                            console.log("VA: HA Device Config:", message.result);
-                            if (message.result.assist_pipeline_preferred)
-                                console.log("VA: Preferred pipeline from device config:", message.result.assist_pipeline_preferred);
-                        } else console.warn("HA WS: Failed to get device config:", message.error);
-                    }
-
-                    break;
-                case "event":
-                    handlePipelineEvent(message.event);
-                    break;
-                case "pong":
-                    break; // console.debug("WS pong received.");
-                default:
-                    break; // console.debug("WS unhandled message type:", message.type, message);
-            }
-        };
-        haWebSocket.onclose = (evt) => {
-            console.log(`WebSocket closed. Code: ${evt.code}, Reason: '${evt.reason}'`);
-            const wasPipelineActive = pipelineActive;
-            pipelineActive = false;
-            resetAudioStreamingState();
-            haWebSocket = null;
-
-            if (store.vaState !== STATE.INITIALIZING && store.vaState !== STATE.IDLE) {
-                console.log("WebSocket closed, transitioning to IDLE state.");
-                if (wasPipelineActive) panelAlert("Connection to Home Assistant lost.");
-                setVAState(STATE.IDLE);
-            }
-
-            if (navigator.onLine && HA_TOKEN) {
-                console.log("Attempting WebSocket auto-reconnect in 5 seconds...");
-                setTimeout(() => {
-                    if (!haWebSocket) {
-                        connectWebSocket().catch((err) => console.error("VA: WebSocket auto-reconnect failed:", err.message));
-                    }
-                }, 5000);
-            }
-        };
-        haWebSocket.onerror = (error) => {
-            console.error("WebSocket error event:", error);
-            const wasPipelineActive = pipelineActive;
-            pipelineActive = false;
-            resetAudioStreamingState();
-            // onclose will set haWebSocket to null and handle state transition for active ops
-            if (store.vaState !== STATE.INITIALIZING && store.vaState !== STATE.IDLE) {
-                // This might be redundant if onclose handles it, but good for clarity
-                console.log("WebSocket error, transitioning to IDLE state from onerror.");
-                if (wasPipelineActive) panelAlert("Connection error with Home Assistant.");
-                // setState(STATE.IDLE); // onclose should also trigger this if needed.
-            }
-            reject(new Error("WebSocket connection error."));
-        };
-    });
-}
-
-function initializeVAD() {
-    return new Promise(async (resolve, reject) => {
-        if (myvad) {
-            console.log("VAD instance already exists.");
-            resolve();
-            return;
-        }
-        console.log("Initializing VAD...");
-        try {
-            if (typeof vad === "undefined" || typeof vad.MicVAD === "undefined") {
-                return reject(new Error("VAD library not found."));
-            }
-            myvad = await vad.MicVAD.new({
-                model: "v5",
-                onnxWASMBasePath: "/vendor/ort/",
-                baseAssetPath: "/vendor/vad/",
-                redemptionFrames: 16,
-                onSpeechRealStart: () => {
-                    console.log("VAD: Speech really started.");
-                    store.voiceLastActiveAt = Date.now();
-                    store.isUserSpeaking = true;
-                    if (wakeWordTimeoutId) {
-                        // Clear "no speech after wake word" timeout
-                        clearTimeout(wakeWordTimeoutId);
-                        wakeWordTimeoutId = null;
-                    }
-                    if (store.vaState === STATE.WAKE_WORD_TRIGGERED) {
-                        initiateHAPipelineRun(); // This will set pipelineActive = true on success
-                    } else {
-                        console.warn(`VAD: Speech started in unexpected state: ${getStateName(store.vaState)}.`);
-                    }
-                },
-                onSpeechEnd: async (finalAudioBuffer) => {
-                    // finalAudioBuffer is the ENTIRE utterance
-                    console.log("VAD: Speech ended.");
-                    if (myvad && myvad.listening) {
-                        console.log("VAD: Speech ended, pausing VAD for this interaction.");
-                        myvad.pause();
-                    }
-                    if (store.vaState === STATE.WAKE_WORD_TRIGGERED && pipelineActive) {
-                        // Send the complete utterance. processAndSendAudio will queue it.
-                        // sendAudioToHA will send it as one message (or you could adapt it to chunk if HA prefers).
-                        // The 'true' flag ensures sendHAStreamEnd is called afterwards.
-                        await processAndSendAudio(finalAudioBuffer);
-                        setVAState(STATE.SENDING_AUDIO); // Transition: VAD speech done, now waiting for HA
-                    } else {
-                        console.warn(
-                            `VAD: Speech ended, but state (${getStateName(store.vaState)}) or pipelineActive (${pipelineActive}) is not receptive.`
-                        );
-                        if (!pipelineActive && store.vaState === STATE.WAKE_WORD_TRIGGERED) {
-                            // Speech ended, but pipeline never started or failed early.
-                            panelAlert("Could not process your request.");
-                            setVAState(STATE.IDLE);
-                        }
-                    }
-                }
-            });
-            console.log("VAD initialized successfully.");
-            resolve();
-        } catch (error) {
-            console.error("VA: Error initializing VAD:", error);
-            myvad = null;
-            reject(error);
-        }
-    });
-}
-
-function sendMessage(message) {
-    if (!haWebSocket || haWebSocket.readyState !== WebSocket.OPEN) {
-        console.warn("sendMessage: WebSocket not open.");
-        return -1;
-    }
-    currentMessageId++;
-    const msg = { ...message, id: currentMessageId };
-    try {
-        haWebSocket.send(JSON.stringify(msg));
-        return currentMessageId;
-    } catch (error) {
-        console.error("sendMessage: Error sending message:", error);
-        return -1;
-    }
-}
-
-function requestDeviceAndPipelineInfo() {
-    if (!haWebSocket || haWebSocket.readyState !== WebSocket.OPEN) return;
-    console.log("Requesting device config and pipeline list from HA.");
-    currentDeviceConfigRequestId = sendMessage({ type: "mobile_app/get_config" });
-    currentPipelineListRequestId = sendMessage({
-        type: "assist_pipeline/pipeline/list"
-    });
-}
-function resetAudioStreamingState() {
-    haReadyForAudio = false;
-    sttBinaryHandlerId = null;
-}
-
-function float32ToInt16(buffer) {
-    let l = buffer.length;
-    let buf = new Int16Array(l);
-    while (l--) buf[l] = Math.min(1, Math.max(-1, buffer[l])) * 0x7fff;
-    return buf;
-}
-
-function newConversationId() {
-    return "monitor-" + Date.now();
-}
-
-async function processAndSendAudio(audio) {
-    if (!pipelineActive || !(store.vaState === STATE.WAKE_WORD_TRIGGERED || store.vaState === STATE.SENDING_AUDIO)) {
-        if (pipelineActive)
-            console.warn(
-                "processAndSendAudio: called while pipelineActive but in incompatible state: " + getStateName(store.vaState)
-            );
-        // Do not resetAudioStreamingState here if pipelineActive is true, as it might be a brief mismatch.
-        return;
-    }
-
-    if (haReadyForAudio) {
-        await sendAudioToHA(audio);
-        sendHAStreamEnd();
-    }
-}
-
-async function lastSTTAnimation(newText) {
-    store.latestText = 0;
-    store.lastSTTAnimState = 1;
-    await sleep(300);
-    store.lastSTTAnimState = 2;
-    store.lastSTT = newText;
-    await sleep(300);
-    store.lastSTTAnimState = 0;
-}
-
-async function lastTTSAnimation(newText) {
-    store.lastTTSLength = newText.length;
-    store.latestText = 1;
-    store.lastTTSAnimState = 1;
-    await sleep(300);
-    store.lastTTSAnimState = 2;
-    store.lastTTS = newText;
-    await sleep(300);
-    store.lastTTSAnimState = 0;
-}
-
-function handlePipelineEvent(event) {
-    // Should primarily be in SENDING_AUDIO, or WAKE_WORD_TRIGGERED (for run-start after speech started)
-    if (!pipelineActive && !(store.vaState === STATE.PLAYING_TTS && event.type === "tts-end")) {
-        // Allow tts-end if somehow pipeline became inactive before TTS
-        console.warn(
-            `Pipeline event '${event.type}' received but pipeline not active or state (${getStateName(store.vaState)}) not expecting it. Data:`,
-            event.data
-        );
-        // If it's a critical error, transition to IDLE
-        if (event.type === "error") {
-            console.error(
-                "VA: HA Pipeline Error Event (unexpected state/pipeline inactive):",
-                event.data.code,
-                event.data.message
-            );
-            panelAlert(`Voice assistant error: ${event.data.message}`);
-            setVAState(STATE.IDLE);
-        }
-        return;
-    }
-
-    console.log("pipeline", event.type);
-    switch (event.type) {
-        case "run-start":
-            console.log("Pipeline event: 'run-start'. HA ready for audio.", event.data);
-            haReadyForAudio = true; // Indicates HA is ready to start the pipeline stages
-
-            // Capture the stt_binary_handler_id for sending audio
-            if (event.data && event.data.runner_data && typeof event.data.runner_data.stt_binary_handler_id === "number") {
-                sttBinaryHandlerId = event.data.runner_data.stt_binary_handler_id;
-                console.log(`Pipeline run-start: Using stt_binary_handler_id: ${sttBinaryHandlerId}`);
-            } else {
-                console.error(
-                    "Pipeline run-start: stt_binary_handler_id not found or not a number in runner_data. Cannot send audio. Event data:",
-                    event.data
-                );
-                sttBinaryHandlerId = null; // Critical error, mark as invalid
-
-                // Abort this pipeline attempt as we can't send audio correctly
-                pipelineActive = false;
-                // currentPipelineRunId remains, but HA will likely timeout.
-                setVAState(STATE.IDLE); // Go back to idle
-                panelAlert("Voice assistant configuration error from server. Please try again.");
-                return; // Stop processing this event further for this case
-            }
-            // Any pre-buffered audio logic would go here if you were chunking before run-start
-            break;
-        case "stt-end":
-            console.log("Pipeline event: 'stt-end'.", event);
-            lastSTTAnimation(event.data.stt_output.text.trim());
-            break;
-        case "tts-start":
-            console.log("Pipeline event: 'tts-start'", event.data);
-            let ttsText = event.data.tts_input.trim();
-            if (ttsText.includes("Provider")) {
-                // error
-                setVAState(STATE.IDLE); // Go back to idle
-                panelAlert("AI Error. Please try again.");
-                console.log(ttsText);
-                return;
-            }
-            if (ttsText.includes(EXIT_MAGIC)) {
-                setVAState(STATE.IDLE); // Go back to idle
-                return;
-            }
-            if (ttsText.includes(REFRESH_MAGIC)) {
-                setVAState(STATE.IDLE); // Go back to idle
-                location.reload();
-                return;
-            }
-            lastTTSAnimation(ttsText);
-            break;
-        case "tts-end":
-            console.log(
-                "Pipeline event: 'tts-end'. TTS Output URL:",
-                event.data.tts_output ? event.data.tts_output.url : "N/A"
-            );
-            if (event.data.tts_output && event.data.tts_output.url) {
-                const ttsUrl = (event.data.tts_output.url.startsWith("http") ? "" : HA_URL) + event.data.tts_output.url;
-                if (store.vaState === STATE.SENDING_AUDIO || store.vaState === STATE.WAKE_WORD_TRIGGERED) {
-                    // Expecting TTS from these states
-                    setVAState(STATE.PLAYING_TTS, ttsUrl);
-                } else {
-                    // console.warn(`TTS-END event received but not in SENDING_AUDIO/WAKE_WORD_TRIGGERED. State: ${getStateName(store.vaState)}. Playing TTS anyway.`);
-                    // new Audio(ttsUrl).play().catch(e => console.error('Error playing TTS audio (fallback):', e));
-                    // if (store.vaState !== STATE.IDLE && store.vaState !== STATE.PLAYING_TTS) { setVAState(STATE.IDLE); }
-                }
-            } else {
-                // No TTS output, but tts stage / intent handling is done. If no run-end follows, this might be the end.
-                console.log("TTS-END event with no TTS output URL. If no further events, pipeline might be considered ended.");
-                // If 'run-end' is not guaranteed, we might need to transition to IDLE here.
-                // For now, assuming 'run-end' is the definitive signal.
-            }
-            break;
-        case "run-end":
-            console.log("Pipeline event: 'run-end'. Pipeline finished.");
-            pipelineActive = false;
-            currentPipelineRunId = null;
-            resetAudioStreamingState();
-            // If we were playing TTS, onended will handle IDLE. Otherwise, if we were sending, go IDLE.
-            if (store.vaState === STATE.SENDING_AUDIO || store.vaState === STATE.WAKE_WORD_TRIGGERED) {
-                setVAState(STATE.IDLE);
-            } else if (store.vaState === STATE.PLAYING_TTS) {
-                // TTS is playing, its onended will transition to IDLE. Run-end just confirms HA side is done.
-                console.log("Run-end received while TTS playing. TTS onended will manage transition to IDLE.");
-            } else {
-                console.log(`Run-end received in state ${getStateName(store.vaState)}. Forcing IDLE.`);
-                setVAState(STATE.IDLE);
-            }
-            break;
-        case "error":
-            console.error("VA: HA Pipeline Error Event:", event.data.code, event.data.message);
-            panelAlert(`Voice assistant error: ${event.data.message} (Code: ${event.data.code})`);
-            pipelineActive = false;
-            currentPipelineRunId = null;
-            resetAudioStreamingState();
-            setVAState(STATE.IDLE);
-            break;
-        default:
-            break;
-    }
-}
-async function sendAudioToHA(audioBuffer) {
-    if (!haWebSocket || haWebSocket.readyState !== WebSocket.OPEN || !pipelineActive || !haReadyForAudio) {
-        console.warn("sendAudioToHA: Conditions not met for sending audio.");
-        return;
-    }
-    if (sttBinaryHandlerId === null) {
-        console.error("sendAudioToHA: stt_binary_handler_id is not set. Cannot send audio.");
-        pipelineActive = false; // Stop this attempt
-        resetAudioStreamingState(); // Clean up
-        setVAState(STATE.IDLE);
-        panelAlert("Error sending audio: missing handler ID.");
-        return;
-    }
-
-    const int16Audio = float32ToInt16(audioBuffer);
-    const audioBytes = int16Audio.buffer;
-    const handlerByte = sttBinaryHandlerId; // Use the dynamic handler ID
-    const prefixedBuffer = new ArrayBuffer(1 + audioBytes.byteLength);
-    const view = new DataView(prefixedBuffer);
-    view.setUint8(0, handlerByte);
-    new Uint8Array(prefixedBuffer, 1).set(new Uint8Array(audioBytes));
-    try {
-        haWebSocket.send(prefixedBuffer);
-    } catch (error) {
-        console.error("sendAudioToHA: Error sending audio data:", error);
-        pipelineActive = false;
-        resetAudioStreamingState();
-        setVAState(STATE.IDLE);
-    }
-}
-
-function sendHAStreamEnd() {
-    if (!haWebSocket || haWebSocket.readyState !== WebSocket.OPEN || !pipelineActive) {
-        // Removed !haReadyForAudio here, as it might be false after sending last chunk
-        console.warn("sendHAStreamEnd: Conditions not met for sending stream end (WS closed or pipeline inactive).");
-        return;
-    }
-    if (sttBinaryHandlerId === null) {
-        console.error("sendHAStreamEnd: stt_binary_handler_id is not set. Cannot reliable send stream end.");
-        // Depending on strictness, you might still try with a default or just log
-        // For robustness, if it's null, this operation is also compromised.
-        // However, sendHAStreamEnd is called after all audio, so HA might figure it out by timeout eventually.
-        // Let's be strict for now:
-        pipelineActive = false; // Stop this attempt
-        resetAudioStreamingState(); // Clean up technically already done if audio send failed
-        setVAState(STATE.IDLE);
-        panelAlert("Error ending audio stream: missing handler ID.");
-        return;
-    }
-
-    const handlerByte = sttBinaryHandlerId; // Use the dynamic handler ID
-    const endMarker = new Uint8Array([handlerByte]);
-    try {
-        haWebSocket.send(endMarker.buffer);
-        console.log("Sent stream end signal to HA using handler ID:", handlerByte);
-        haReadyForAudio = false; // No more audio for THIS run after end signal.
-    } catch (error) {
-        console.error("sendHAStreamEnd: Error sending stream end signal:", error);
-        pipelineActive = false;
-        resetAudioStreamingState();
-        setVAState(STATE.IDLE);
-    }
-}
-
-function initiateHAPipelineRun() {
-    if (!haWebSocket || haWebSocket.readyState !== WebSocket.OPEN) {
-        console.warn("Cannot initiate HA pipeline: WebSocket not open.");
-        panelAlert("Not connected to Home Assistant.");
-        setVAState(STATE.IDLE);
-        return;
-    }
-    if (pipelineActive) {
-        // Should not happen if state logic is correct
-        console.warn("Cannot initiate HA pipeline: another pipeline is already active.");
-        return;
-    }
-    if (store.vaState !== STATE.WAKE_WORD_TRIGGERED) {
-        console.warn(`initiateHAPipelineRun called in incorrect state: ${getStateName(store.vaState)}. Aborting.`);
-        return;
-    }
-    if (!HA_ASSIST_PIPELINE_NAME) {
-        console.error("Cannot initiate HA pipeline: HA_ASSIST_PIPELINE_NAME is not configured.");
-        panelAlert("HA Assist Pipeline Name is not configured.");
-        setVAState(STATE.IDLE);
-        return;
-    }
-
-    console.log(`Initiating HA Assist Pipeline: ${HA_ASSIST_PIPELINE_NAME}`);
-    resetAudioStreamingState(); // Prepare for new audio stream
-
-    currentPipelineRunId = sendMessage({
-        type: "assist_pipeline/run",
-        start_stage: "stt",
-        end_stage: "tts",
-        input: { sample_rate: 16000 }, // Ensure VAD outputs this rate
-        pipeline: HA_ASSIST_PIPELINE_NAME,
-        conversation_id: conversationId
-    });
-
-    if (currentPipelineRunId === -1) {
-        console.error("Failed to send assist_pipeline/run message.");
-        pipelineActive = false; // Ensure it's false
-        panelAlert("Failed to start voice command with Home Assistant.");
-        setVAState(STATE.IDLE);
-    } else {
-        console.log(`Pipeline run initiated with ID: ${currentPipelineRunId}.`);
-        pipelineActive = true; // Successfully initiated HA communication
-        // State remains WAKE_WORD_TRIGGERED. Transitions to SENDING_AUDIO on VAD's onSpeechEnd.
-    }
-}
-
-// Start the application
-initializeApp().catch((initializationError) => {
-    console.error("Critical error during application initialization:", initializationError);
-    panelAlert("Application failed to initialize: " + initializationError.message);
-    // Ensure state reflects this failure if not already handled
-    if (store.vaState === STATE.INITIALIZING || store.vaState === STATE.IDLE) {
-        // Could define a STATE.ERROR or just leave it as non-functional IDLE
-        // For now, alerts are shown. User must refresh or fix config.
-    }
 });
 
 // Watchdog timer
@@ -2594,11 +1287,12 @@ setInterval(() => {
     }
 }, 1000);
 
-document.querySelector("body").addEventListener("click", (e) => {
-    document.querySelector("body").requestFullscreen();
+document.querySelector("html").addEventListener("click", (e) => {
+    // console.log('store.lastInteract = Date.now();')
     store.lastInteract = Date.now();
 });
 
-document.querySelector("body").addEventListener("touchstart", (e) => {
+document.querySelector("html").addEventListener("touchstart", (e) => {
+    // console.log('store.lastInteract = Date.now();')
     store.lastInteract = Date.now();
 });

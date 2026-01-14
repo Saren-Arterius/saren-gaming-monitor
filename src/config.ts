@@ -26,6 +26,8 @@ export const CONFIG = {
                 ssd: { max: 4200 }
             }
         },
+
+        MH_FAN: false
     },
     // lm_sensors json output, See `sensors -j`
     sensors: {

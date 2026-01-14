@@ -1,5 +1,5 @@
 import { CONFIG } from './config';
-import { LastStats, NetworkMetrics, SystemMetrics, SSDMetrics } from './types';
+import { LastStats, SystemMetrics, SSDMetrics } from './types';
 
 async function execAsync(command: string): Promise<{ stdout: string, stderr: string }> {
     const proc = Bun.spawn(["sh", "-c", command], {
@@ -14,6 +14,7 @@ async function execAsync(command: string): Promise<{ stdout: string, stderr: str
 
 const STORAGE_HEALTH_RESULTS_TEMPLATE = {
     status: 0, // 0 = normal, 1 = warning, 2 = critical
+    statusText: 'Normal',
     issues: [],
     metrics: {
         smart: {},
@@ -23,7 +24,6 @@ const STORAGE_HEALTH_RESULTS_TEMPLATE = {
 export class SystemMonitor {
     private lastStats: LastStats | null = null;
     private metrics: SystemMetrics | null = null;
-    private networkMetrics: NetworkMetrics | null = null;
     private saneInfo = {
         networkRxTotal: 0,
         networkTxTotal: 0
@@ -57,45 +57,17 @@ export class SystemMonitor {
     }
 
     async updateMetrics() {
-        const data = await this.collectData();
-        this.metrics = this.transformSystemInfo(data);
+        try {
+            const data = await this.collectData();
+            this.metrics = this.transformSystemInfo(data);
+        } catch (error) {
+            console.error('Error updating system metrics:', error);
+        }
         return this.metrics;
     }
 
     getMetrics() {
         return this.metrics;
-    }
-
-    async updateNetworkMetrics() {
-        if (!CONFIG.networkStatusAPI) return null;
-        try {
-            const response = await fetch(CONFIG.networkStatusAPI);
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            this.networkMetrics = await response.json() as NetworkMetrics;
-        } catch (error) {
-            console.error('Failed to fetch network metrics:', error);
-            // this.networkMetrics = null;
-        }
-        return this.networkMetrics;
-    }
-
-    getNetworkMetrics() {
-        return this.networkMetrics;
-    }
-
-    getNetworkMetricsPartial() {
-        if (!this.networkMetrics) {
-            return null;
-        }
-
-        return {
-            internet_ports: this.networkMetrics.internet_ports,
-            ping_statistics: this.networkMetrics.ping_statistics,
-            network_traffic: this.networkMetrics.network_traffic,
-            last_updated: this.networkMetrics.last_updated
-        };
     }
 
     async collectData() {
@@ -168,15 +140,12 @@ export class SystemMonitor {
         let cpuMhzs = data.cpuinfo.filter((l: string) => l.startsWith('cpu MHz')).map((s: string) => parseFloat(s.split(':')[1]));
 
         const formattedUptime = this.formatUptime(parseFloat(data.uptime));
-        // Read load averages
-        // console.log(data.loadavg);
         const loadavg = data.loadavg
             .split(' ')
             .slice(0, 3)
             .map((num: string) => parseFloat(num).toFixed(2))
             .join(' ');
 
-        // Combine the information in required format
         let system = `${formattedUptime} | ${loadavg}`;
 
         const disksMetrics: { [label: string]: SSDMetrics } = {};
@@ -268,7 +237,6 @@ export class SystemMonitor {
                 networkRxTotal: 0,
                 networkTxTotal: 0,
                 activeConn: parseInt(data.activeConn),
-
                 backupNetworkPacketsRx: 0,
                 backupNetworkPacketsTx: 0,
                 backupNetworkRx: 0,
@@ -315,10 +283,6 @@ export class SystemMonitor {
                     routeMetrics[match[1]] = parseInt(match[2]);
                 }
             });
-            // console.log({routeMetrics});
-
-            // const isUsingBackup = (!routeMetrics[CONFIG.network.interface] && !!routeMetrics[CONFIG.network.backupInterface]) || 
-            //     routeMetrics[CONFIG.network.backupInterface] < routeMetrics[CONFIG.network.interface];
             const isUsingBackup = routeMetrics[CONFIG.network.backupInterface] < 1000;
             result.io.isUsingBackup = isUsingBackup;
             result.io.routeMetrics = routeMetrics;
@@ -336,7 +300,7 @@ export class SystemMonitor {
                 result.io.networkPacketsTx = Math.round((parseInt(txPackets) - parseInt(prevTxPackets)) / timeDiff);
 
 
-                // Prevent interface restart surprises 
+                // Prevent interface restart surprises
                 if (parseInt(rxBytes) > this.saneInfo.networkRxTotal) {
                     this.saneInfo.networkRxTotal = parseInt(rxBytes);
                 }
@@ -345,14 +309,13 @@ export class SystemMonitor {
                 }
                 result.io.networkRxTotal = this.saneInfo.networkRxTotal;
                 result.io.networkTxTotal = this.saneInfo.networkTxTotal;
-                // console.log(result.io, this.saneInfo);
             }
 
             const backupNetworkStats = data.netdev.find((line: string) => line.startsWith(`${CONFIG.network.backupInterface}:`));
             const backupPrevNetworkStats = this.lastStats.netdev.find((line: string) => line.startsWith(`${CONFIG.network.backupInterface}:`));
             if (backupNetworkStats && backupPrevNetworkStats) {
-                const [, rxBytes, rxPackets, , , , , , , txBytes, txPackets] = backupNetworkStats.split(/\s+/);
-                const [, prevRxBytes, prevRxPackets, , , , , , , prevTxBytes, prevTxPackets] = backupPrevNetworkStats.split(/\s+/);
+                const [, rxBytes, rxPackets, , , , , , txBytes, txPackets] = backupNetworkStats.split(/\s+/);
+                const [, prevRxBytes, prevRxPackets, , , , , , prevTxBytes, prevTxPackets] = backupPrevNetworkStats.split(/\s+/);
 
                 result.io.backupNetworkRx = Math.round((parseInt(rxBytes) - parseInt(prevRxBytes)) / timeDiff);
                 result.io.backupNetworkTx = Math.round((parseInt(txBytes) - parseInt(prevTxBytes)) / timeDiff);
@@ -368,7 +331,6 @@ export class SystemMonitor {
             netdev: [...data.netdev],
             lastUpdate: now
         };
-
         return result;
     }
 
@@ -415,7 +377,6 @@ export class SystemMonitor {
         }
 
         // Media Errors
-        // health.media_errors = 1; // troll
         results.metrics.smart.mediaErrors = {
             count: health.media_errors,
             formatted: `${health.media_errors} media errors`
@@ -437,12 +398,12 @@ export class SystemMonitor {
 
         results.metrics.smart.dataWritten = {
             units: health.data_units_written,
-            formatted: `${(health.data_units_written * 512000 / (1000 ** 4)).toFixed(2)} TB written`
+            formatted: `${(health.data_units_written * 512000 / (1024 * 1024 * 1024 * 1024)).toFixed(2)} TB written`
         };
 
         results.metrics.smart.dataRead = {
             units: health.data_units_read,
-            formatted: `${(health.data_units_read * 512000 / (1000 ** 4)).toFixed(2)} TB read`
+            formatted: `${(health.data_units_read * 512000 / (1024 * 1024 * 1024 * 1024)).toFixed(2)} TB read`
         };
 
         // === BTRFS Analysis ===
