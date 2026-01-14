@@ -1174,7 +1174,7 @@ const NetworkContent = observer(() => {
     );
 });
 
-const InternetContent = observer(() => {
+const PingMonitorContent = observer(({ metrics, emptyMessage, getId, getTitle, getSubtitle }) => {
     const tdStyle = { padding: "8px", borderBottom: "1px solid #222" };
     const thStyle = {
         padding: "8px",
@@ -1184,21 +1184,22 @@ const InternetContent = observer(() => {
         color: "#000",
         opacity: 0.7
     };
+
     return (
         <>
-            {store.internetMetrics &&
-                store.internetMetrics.map((server) => {
-                    const isExpanded = store.iotExpandedDevices && store.iotExpandedDevices[server.id];
-                    const currentStat = server.stats?.["1m"];
+            {metrics &&
+                metrics.map((item) => {
+                    const id = getId(item);
+                    const isExpanded = store.iotExpandedDevices && store.iotExpandedDevices[id];
+                    const currentStat = item.stats?.["1m"];
                     const currentAvg = currentStat ? currentStat[3] : null;
                     const currentLoss = currentStat ? currentStat[0] : null;
 
                     return (
                         <div
-                            key={server.id}
+                            key={id}
                             style={{
                                 marginBottom: 15,
-                                // backgroundColor: "#1a1a1a",
                                 borderRadius: 8,
                                 overflow: "hidden",
                                 border: "1px solid rgba(255, 255, 255, 0.1)"
@@ -1215,7 +1216,7 @@ const InternetContent = observer(() => {
                                 onClick={() => {
                                     store.iotExpandedDevices = {
                                         ...(store.iotExpandedDevices || {}),
-                                        [server.id]: !isExpanded
+                                        [id]: !isExpanded
                                     };
                                 }}
                             >
@@ -1228,10 +1229,10 @@ const InternetContent = observer(() => {
                                 >
                                     <div>
                                         <div style={{ fontWeight: 600, color: "#eee" }}>
-                                            {server.hostname}
+                                            {getTitle(item)}
                                         </div>
                                         <div style={{ fontSize: "0.8em", opacity: 0.6, marginTop: 2 }}>
-                                            {server.address}
+                                            {getSubtitle(item)}
                                         </div>
                                     </div>
                                     <div
@@ -1265,8 +1266,8 @@ const InternetContent = observer(() => {
                                         backgroundColor: "#111"
                                     }}
                                 >
-                                    {server.history &&
-                                        server.history.slice(-30).map((stat, i, arr) => {
+                                    {item.history &&
+                                        item.history.slice(-30).map((stat, i, arr) => {
                                             const avg = stat[3];
                                             const loss = stat[0];
                                             const color = iotPingColor(avg, loss);
@@ -1310,43 +1311,15 @@ const InternetContent = observer(() => {
                                                 }}
                                             >
                                                 <th style={{ ...thStyle }}>Period</th>
-                                                <th
-                                                    style={{
-                                                        ...thStyle,
-                                                        textAlign: "right"
-                                                    }}
-                                                >
-                                                    Ping (Avg)
-                                                </th>
-                                                <th
-                                                    style={{
-                                                        ...thStyle,
-                                                        textAlign: "right"
-                                                    }}
-                                                >
-                                                    Loss
-                                                </th>
-                                                <th
-                                                    style={{
-                                                        ...thStyle,
-                                                        textAlign: "right"
-                                                    }}
-                                                >
-                                                    Min / Max
-                                                </th>
-                                                <th
-                                                    style={{
-                                                        ...thStyle,
-                                                        textAlign: "right"
-                                                    }}
-                                                >
-                                                    Jitter
-                                                </th>
+                                                <th style={{ ...thStyle, textAlign: "right" }}>Ping (Avg)</th>
+                                                <th style={{ ...thStyle, textAlign: "right" }}>Loss</th>
+                                                <th style={{ ...thStyle, textAlign: "right" }}>Min / Max</th>
+                                                <th style={{ ...thStyle, textAlign: "right" }}>Jitter</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {["1m", "5m", "15m", "1h", "3h", "12h", "24h"].map((k) => {
-                                                const stat = server.stats?.[k];
+                                                const stat = item.stats?.[k];
                                                 if (!stat) return null;
                                                 return (
                                                     <tr key={k} style={{ borderBottom: "1px solid #222" }}>
@@ -1397,7 +1370,7 @@ const InternetContent = observer(() => {
                         </div>
                     );
                 })}
-            {(!store.internetMetrics || store.internetMetrics.length === 0) && (
+            {(!metrics || metrics.length === 0) && (
                 <div
                     style={{
                         padding: 40,
@@ -1406,251 +1379,36 @@ const InternetContent = observer(() => {
                         fontStyle: "italic"
                     }}
                 >
-                    No internet servers are currently being monitored.
+                    {emptyMessage}
                 </div>
             )}
         </>
     );
 });
 
-const IoTContent = observer(() => {
-    const tdStyle = { padding: "8px", borderBottom: "1px solid #222" };
-    const thStyle = {
-        padding: "8px",
-        textAlign: "left",
-        borderBottom: "1px solid #444",
-        fontSize: "0.9em",
-        color: "#000",
-        opacity: 0.7
-    };
-    return (
-        <>
-            {store.iotMetrics &&
-                store.iotMetrics.map((device) => {
-                    const isExpanded = store.iotExpandedDevices && store.iotExpandedDevices[device.mac];
-                    const currentStat = device.stats?.["1m"];
-                    const currentAvg = currentStat ? currentStat[3] : null;
-                    const currentLoss = currentStat ? currentStat[0] : null;
+const InternetContent = () => (
+    <PingMonitorContent
+        metrics={store.internetMetrics}
+        emptyMessage="No internet servers are currently being monitored."
+        getId={(s) => s.id}
+        getTitle={(s) => s.hostname}
+        getSubtitle={(s) => s.address}
+    />
+);
 
-                    return (
-                        <div
-                            key={device.mac}
-                            style={{
-                                marginBottom: 15,
-                                // backgroundColor: "#1a1a1a",
-                                borderRadius: 8,
-                                overflow: "hidden",
-                                border: "1px solid rgba(255, 255, 255, 0.1)"
-                            }}
-                        >
-                            <div
-                                style={{
-                                    padding: 15,
-                                    cursor: "pointer",
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    gap: 10
-                                }}
-                                onClick={() => {
-                                    store.iotExpandedDevices = {
-                                        ...(store.iotExpandedDevices || {}),
-                                        [device.mac]: !isExpanded
-                                    };
-                                }}
-                            >
-                                <div
-                                    style={{
-                                        display: "flex",
-                                        justifyContent: "space-between",
-                                        alignItems: "center"
-                                    }}
-                                >
-                                    <div>
-                                        <div style={{ fontWeight: 600, color: "#eee" }}>
-                                            {device.hostname || "Unknown Host"}
-                                        </div>
-                                        <div style={{ fontSize: "0.8em", opacity: 0.6, marginTop: 2 }}>
-                                            {device.ip} • <span style={{ fontFamily: "monospace" }}>{device.mac}</span>
-                                        </div>
-                                    </div>
-                                    <div
-                                        style={{
-                                            fontSize: "0.9em",
-                                            opacity: 0.8,
-                                            textAlign: "right"
-                                        }}
-                                    >
-                                        {currentStat ? (
-                                            <>
-                                                <span style={{ color: iotPingColor(currentAvg, currentLoss) }}>
-                                                    {currentAvg}ms
-                                                </span>
-                                                <br />
-                                                <span style={{ fontSize: "0.8em", opacity: 0.7 }}>{currentLoss}% loss</span>
-                                            </>
-                                        ) : (
-                                            <span style={{ opacity: 0.4 }}>N/A</span>
-                                        )}
-                                    </div>
-                                </div>
-                                <div
-                                    style={{
-                                        display: "flex",
-                                        height: 6,
-                                        width: "100%",
-                                        borderRadius: 3,
-                                        overflow: "hidden",
-                                        gap: 0,
-                                        backgroundColor: "#111"
-                                    }}
-                                >
-                                    {device.history &&
-                                        device.history.slice(-30).map((stat, i, arr) => {
-                                            const avg = stat[3];
-                                            const loss = stat[0];
-                                            const color = iotPingColor(avg, loss);
-                                            return (
-                                                <div
-                                                    key={i}
-                                                    title={`${avg}ms`}
-                                                    style={{
-                                                        flex: 1,
-                                                        backgroundColor: color,
-                                                        opacity: 0.2 + 0.8 * (i / arr.length)
-                                                    }}
-                                                ></div>
-                                            );
-                                        })}
-                                </div>
-                            </div>
-                            {isExpanded && (
-                                <div
-                                    style={{
-                                        padding: "0 15px 15px 15px",
-                                        fontSize: "0.85em",
-                                        borderTop: "1px solid #2a2a2a",
-                                        marginTop: -5,
-                                        paddingTop: 10
-                                    }}
-                                >
-                                    <table
-                                        style={{
-                                            width: "100%",
-                                            borderCollapse: "collapse",
-                                            opacity: 0.9
-                                        }}
-                                    >
-                                        <thead>
-                                            <tr
-                                                style={{
-                                                    borderBottom: "1px solid #333",
-                                                    textAlign: "left",
-                                                    color: "#000"
-                                                }}
-                                            >
-                                                <th style={{ ...thStyle }}>Period</th>
-                                                <th
-                                                    style={{
-                                                        ...thStyle,
-                                                        textAlign: "right"
-                                                    }}
-                                                >
-                                                    Ping (Avg)
-                                                </th>
-                                                <th
-                                                    style={{
-                                                        ...thStyle,
-                                                        textAlign: "right"
-                                                    }}
-                                                >
-                                                    Loss
-                                                </th>
-                                                <th
-                                                    style={{
-                                                        ...thStyle,
-                                                        textAlign: "right"
-                                                    }}
-                                                >
-                                                    Min / Max
-                                                </th>
-                                                <th
-                                                    style={{
-                                                        ...thStyle,
-                                                        textAlign: "right"
-                                                    }}
-                                                >
-                                                    Jitter
-                                                </th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {["1m", "5m", "15m", "1h", "3h", "12h", "24h"].map((k) => {
-                                                const stat = device.stats?.[k];
-                                                if (!stat) return null;
-                                                return (
-                                                    <tr key={k} style={{ borderBottom: "1px solid #222" }}>
-                                                        <td
-                                                            style={{
-                                                                ...tdStyle,
-                                                                width: "100%",
-                                                                color: k === "1m" ? "#fff" : "#aaa"
-                                                            }}
-                                                        >
-                                                            {k}
-                                                        </td>
-                                                        <td style={{ ...tdStyle, textAlign: "right" }}>{stat[3]}ms</td>
-                                                        <td
-                                                            style={{
-                                                                ...tdStyle,
-                                                                textAlign: "right",
-                                                                color: stat[0] > 0 ? "#ff5555" : "inherit"
-                                                            }}
-                                                        >
-                                                            {stat[0]}%
-                                                        </td>
-                                                        <td
-                                                            style={{
-                                                                ...tdStyle,
-                                                                textAlign: "right",
-                                                                opacity: 0.7
-                                                            }}
-                                                        >
-                                                            {stat[1]}ms / {stat[2]}ms
-                                                        </td>
-                                                        <td
-                                                            style={{
-                                                                ...tdStyle,
-                                                                textAlign: "right",
-                                                                opacity: 0.7
-                                                            }}
-                                                        >
-                                                            {stat[4]}ms
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-                        </div>
-                    );
-                })}
-            {(!store.iotMetrics || store.iotMetrics.length === 0) && (
-                <div
-                    style={{
-                        padding: 40,
-                        textAlign: "center",
-                        opacity: 0.5,
-                        fontStyle: "italic"
-                    }}
-                >
-                    No IoT devices are currently being monitored.
-                </div>
-            )}
-        </>
-    );
-});
+const IoTContent = () => (
+    <PingMonitorContent
+        metrics={store.iotMetrics}
+        emptyMessage="No IoT devices are currently being monitored."
+        getId={(d) => d.mac}
+        getTitle={(d) => d.hostname || "Unknown Host"}
+        getSubtitle={(d) => (
+            <>
+                {d.ip} • <span style={{ fontFamily: "monospace" }}>{d.mac}</span>
+            </>
+        )}
+    />
+);
 
 const AlertOverlay = observer(() => {
     const shouldShow = !shouldPowerSave() && store.alertMessage && store.alertExpire > Math.max(store.uiPollingTimestamp, Date.now());
