@@ -1,5 +1,5 @@
 import { CONFIG } from './config';
-import { LastStats, NetworkMetrics, SystemMetrics, SSDMetrics } from './types';
+import { LastStats, SystemMetrics, SSDMetrics } from './types';
 
 async function execAsync(command: string): Promise<{ stdout: string, stderr: string }> {
     const proc = Bun.spawn(["sh", "-c", command], {
@@ -24,7 +24,6 @@ const STORAGE_HEALTH_RESULTS_TEMPLATE = {
 export class SystemMonitor {
     private lastStats: LastStats | null = null;
     private metrics: SystemMetrics | null = null;
-    private networkMetrics: NetworkMetrics | null = null;
     private saneInfo = {
         networkRxTotal: 0,
         networkTxTotal: 0
@@ -71,37 +70,6 @@ export class SystemMonitor {
         return this.metrics;
     }
 
-    async updateNetworkMetrics() {
-        if (!CONFIG.networkStatusAPI) return null;
-        try {
-            const response = await fetch(CONFIG.networkStatusAPI);
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            this.networkMetrics = await response.json() as NetworkMetrics;
-        } catch (error) {
-            console.error('Failed to fetch network metrics:', error);
-            // this.networkMetrics = null;
-        }
-        return this.networkMetrics;
-    }
-
-    getNetworkMetrics() {
-        return this.networkMetrics;
-    }
-
-    getNetworkMetricsPartial() {
-        if (!this.networkMetrics) {
-            return null;
-        }
-
-        return {
-            internet_ports: this.networkMetrics.internet_ports,
-            ping_statistics: this.networkMetrics.ping_statistics,
-            network_traffic: this.networkMetrics.network_traffic,
-            last_updated: this.networkMetrics.last_updated
-        };
-    }
 
     async collectData() {
         await this.resolveDeviceNames();

@@ -85,8 +85,6 @@ export const CONFIG = {
         uptime: '/proc/uptime',
         loadavg: '/proc/loadavg'
     },
-    networkStatusAPI: null,
-    iotLeases: null,
     disks: {
         systemSSD: {
             label: 'systemSSD',
