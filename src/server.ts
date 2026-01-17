@@ -84,7 +84,7 @@ export class AppServer {
             const storageInfo = await this.systemMonitor.updateStorageInfo();
             console.log(storageInfo);
             this.io.emit('storageInfo', { storageInfo });
-        }, 60000);
+        }, 5000);
     }
 
     start() {
