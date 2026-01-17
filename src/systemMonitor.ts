@@ -1,5 +1,5 @@
 import { CONFIG } from './config';
-import { LastStats, SystemMetrics, SSDMetrics } from './types';
+import { LastStats, SystemMetrics, SSDMetrics, BtrfsScrubStatus, StorageHealthInfo, StorageInfoMap } from './types';
 
 async function execAsync(command: string): Promise<{ stdout: string, stderr: string }> {
     const proc = Bun.spawn(["sh", "-c", command], {
@@ -32,16 +32,16 @@ export class SystemMonitor {
     private fsTypes: { [key: string]: string } = {};
     private deviceNames: { [key: string]: string } = {};
 
-    private storageInfo = Object.values(CONFIG.disks).reduce((acc, disk) => {
+    private storageInfo: StorageInfoMap = Object.values(CONFIG.disks).reduce((acc, disk) => {
         acc[disk.label] = {
             paths: [disk.device, disk.mountPoint],
             lastUpdate: 0,
             info: JSON.parse(JSON.stringify(STORAGE_HEALTH_RESULTS_TEMPLATE))
         };
         return acc;
-    }, {} as { [key: string]: { paths: string[], lastUpdate: number, info: any } });
+    }, {} as StorageInfoMap);
 
-    async resolveDeviceNames() {
+    async resolveDeviceNames(): Promise<void> {
         if (Object.keys(this.deviceNames).length > 0) return;
 
         for (const disk of Object.values(CONFIG.disks)) {
@@ -66,12 +66,12 @@ export class SystemMonitor {
         return this.metrics;
     }
 
-    getMetrics() {
+    getMetrics(): SystemMetrics | null {
         return this.metrics;
     }
 
 
-    async collectData() {
+    async collectData(): Promise<any> {
         await this.resolveDeviceNames();
         const files = CONFIG.systemFiles;
         const disks = Object.values(CONFIG.disks);
@@ -125,7 +125,7 @@ export class SystemMonitor {
     }
 
 
-    formatUptime(seconds: number) {
+    formatUptime(seconds: number): string {
         const days = Math.floor(seconds / 86400);
         const hours = Math.floor((seconds % 86400) / 3600);
         const minutes = Math.floor((seconds % 3600) / 60);
@@ -134,7 +134,7 @@ export class SystemMonitor {
     }
 
 
-    transformSystemInfo(data: any) {
+    transformSystemInfo(data: any): SystemMetrics {
         const now = Date.now();
 
         // console.log(data.ssdStats)
@@ -351,9 +351,64 @@ export class SystemMonitor {
 
 
 
-    analyzeStorageHealth(smartData: any, btrfsData: any) {
+    parseBtrfsScrubStatus(stdout: string): BtrfsScrubStatus | null {
+        const lines = stdout.split('\n');
+        const status: Partial<BtrfsScrubStatus> = {
+            status: 'none',
+            progress: 0,
+            totalToScrub: 0,
+            bytesScrubbed: 0
+        };
 
-        let results = JSON.parse(JSON.stringify(STORAGE_HEALTH_RESULTS_TEMPLATE));
+        const getValue = (key: string) => {
+            const line = lines.find(l => l.trim().startsWith(key + ':'));
+            if (!line) return '';
+            const parts = line.split(':');
+            return parts.slice(1).join(':').trim();
+        };
+
+        status.uuid = getValue('UUID');
+        if (!status.uuid) return null;
+
+        const scrubStartedStr = getValue('Scrub started');
+        if (scrubStartedStr) {
+            status.scrubStarted = new Date(scrubStartedStr).getTime();
+        }
+
+        const statusStr = getValue('Status');
+        status.status = (statusStr.toLowerCase() || 'none') as any;
+
+        status.duration = getValue('Duration');
+        status.timeLeft = getValue('Time left');
+        status.eta = getValue('ETA');
+        status.rate = getValue('Rate');
+        status.errorSummary = getValue('Error summary');
+
+        const totalStr = getValue('Total to scrub');
+        if (totalStr) {
+            status.totalToScrub = parseFloat(totalStr.replace('GiB', '')) * 1024 * 1024 * 1024;
+        }
+
+        const scrubbedLine = lines.find(l => l.includes('Bytes scrubbed'));
+        if (scrubbedLine) {
+            const match = scrubbedLine.match(/Bytes scrubbed:\s+([\d.]+)GiB\s+\(([\d.]+)%\)/);
+            if (match) {
+                status.bytesScrubbed = parseFloat(match[1]) * 1024 * 1024 * 1024;
+                status.progress = parseFloat(match[2]);
+            }
+        }
+
+        if (status.status === 'finished') {
+            status.progress = 100;
+            status.bytesScrubbed = status.totalToScrub;
+        }
+
+        return status as BtrfsScrubStatus;
+    }
+
+    analyzeStorageHealth(smartData: any, btrfsData: any, scrubStatus: BtrfsScrubStatus | null): StorageHealthInfo {
+
+        let results: StorageHealthInfo = JSON.parse(JSON.stringify(STORAGE_HEALTH_RESULTS_TEMPLATE));
         // Helper function to add issues
         const addIssue = (message: string, level: number) => {
             results.issues.push(message);
@@ -403,6 +458,14 @@ export class SystemMonitor {
         // SMART Status
         if (!smartData.smart_status.passed) {
             addIssue('SMART overall status: FAILED', 2);
+        }
+
+        // BTRFS Scrub Status
+        if (scrubStatus) {
+            results.metrics.scrub = scrubStatus;
+            if (scrubStatus.errorSummary && scrubStatus.errorSummary !== 'no errors found') {
+                addIssue(`BTRFS Scrub errors: ${scrubStatus.errorSummary}`, 1);
+            }
         }
 
         // Power-on time and read/write statistics
@@ -458,7 +521,7 @@ export class SystemMonitor {
     }
 
 
-    async collectStorageInfo(label: string) {
+    async collectStorageInfo(label: string): Promise<StorageHealthInfo | null> {
         const disk = (CONFIG.disks as any)[label];
         if (!disk) return null;
         const device = disk.device;
@@ -471,22 +534,40 @@ export class SystemMonitor {
         }
         const isBtrfs = this.fsTypes[mountPoint] === 'btrfs';
 
+        let smart: string;
+        let btrfsStats = 'null';
+        let scrubStdout = '';
         const smartPromise = execAsync(`sudo smartctl ${device} -aj || true`);
-        const btrfsPromise = isBtrfs
-            ? execAsync(`sudo btrfs --format=json device stats ${mountPoint}`)
-            : Promise.resolve({ stdout: 'null', stderr: '' });
 
-        const [
-            { stdout: smart },
-            { stdout: btrfsStats },
-        ] = await Promise.all([
-            smartPromise,
-            btrfsPromise
-        ])
-        return this.analyzeStorageHealth(JSON.parse(smart), JSON.parse(btrfsStats));
+        if (isBtrfs) {
+            const [
+                smartResult,
+                btrfsResult,
+                scrubResult
+            ] = await Promise.all([
+                smartPromise,
+                execAsync(`sudo btrfs --format=json device stats ${mountPoint}`),
+                execAsync(`sudo btrfs scrub status --gbytes ${mountPoint}`),
+            ]);
+            smart = smartResult.stdout;
+            btrfsStats = btrfsResult.stdout;
+            scrubStdout = scrubResult.stdout;
+        } else {
+            const smartResult = await smartPromise;
+            smart = smartResult.stdout;
+        }
+
+        const scrubStatus = isBtrfs ? this.parseBtrfsScrubStatus(scrubStdout) : null;
+        const health = this.analyzeStorageHealth(JSON.parse(smart), JSON.parse(btrfsStats), scrubStatus);
+
+        if (scrubStatus) {
+            health.metrics.scrub = scrubStatus;
+        }
+
+        return health;
     }
 
-    async updateStorageInfo() {
+    async updateStorageInfo(): Promise<StorageInfoMap> {
         for (let [label, storage] of Object.entries(this.storageInfo)) {
             let info = await this.collectStorageInfo(label);
             if (info) {
@@ -497,7 +578,7 @@ export class SystemMonitor {
         return this.storageInfo;
     }
 
-    getStorageInfo() {
+    getStorageInfo(): StorageInfoMap {
         return this.storageInfo;
     }
 }

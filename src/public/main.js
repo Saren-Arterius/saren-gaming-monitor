@@ -17,6 +17,7 @@ const NIGHT_VOL_EXPONENT = 1;
 let DAY_VOL = parseFloat(localStorage.getItem('day_volume') || '1');
 let NIGHT_VOL = parseFloat(localStorage.getItem('night_volume') || '1');
 
+const COLOR_SAFE = "#89e08b";
 const COLOR_STOPS = [
     { color: "#70CAD1", position: 0 },
     { color: "#F7EE7F", position: 50 },
@@ -376,6 +377,51 @@ function getGMT8Time(t) {
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
+const ScrubMiniProgress = observer(({ storageKey, isSmallScreen }) => {
+    if (!storageKey) return null;
+    const storageData = store.storageInfo[storageKey];
+    const scrub = storageData?.info?.metrics?.scrub;
+    const showScrubProgress =
+        scrub &&
+        scrub.status !== "aborted" &&
+        scrub.status !== "interrupted" &&
+        scrub.status !== "none" &&
+        scrub.scrubStarted &&
+        Date.now() - scrub.scrubStarted < 48 * 3600 * 1000;
+
+    if (!showScrubProgress) return null;
+
+    return (
+        <div
+            style={{
+                width: isSmallScreen ? "100%" : "80%",
+                height: 4,
+                backgroundColor: "rgba(255,255,255,0.1)",
+                borderRadius: 2,
+                marginTop: 4,
+                overflow: "hidden",
+                position: "absolute",
+                bottom: isSmallScreen ? -36 : -20,
+                left: isSmallScreen ? null : "10%"
+            }}
+        >
+            <div
+                style={{
+                    width: `${scrub.progress}%`,
+                    height: "100%",
+                    backgroundColor:
+                        scrub.status === "finished"
+                            ? COLOR_SAFE
+                            : scrub.status === "interrupted"
+                                ? COLOR_STOPS[1].color
+                                : COLOR_STOPS[0].color,
+                    transition: "width 0.3s ease, background-color 0.3s ease"
+                }}
+            ></div>
+        </div>
+    );
+});
+
 const Gauge = ({
     value,
     valueMB,
@@ -392,7 +438,8 @@ const Gauge = ({
     clickFn,
     textColor,
     textExtra,
-    labelExtra
+    labelExtra,
+    storageKey
 }) => {
     useEffect(() => {
         feather.replace();
@@ -428,6 +475,7 @@ const Gauge = ({
         (gpuFreq ? `${store.frequencies.gpuCore} MHz` : "") +
         (gpuPwr ? `${store.pwr.gpu} W` : "") +
         (labelExtra || "");
+
     return (
         <div
             className="gauge"
@@ -503,6 +551,7 @@ const Gauge = ({
                             {!isSmallScreen && labelExtras ? " / " + labelExtras : ""}
                         </div>
                         {isSmallScreen && <div className="gauge-label">{labelExtras}</div>}
+                        <ScrubMiniProgress storageKey={storageKey} isSmallScreen={isSmallScreen} />
                     </div>
                 </div>
             </div>
@@ -662,20 +711,26 @@ const fullScreenOverlayStyle = {
     transition: "opacity 0.3s ease-in-out"
 };
 
+
+const tabStyle = (isActive) => ({
+    padding: "10px 15px",
+    cursor: "pointer",
+    borderBottom: isActive ? "2px solid #70CAD1" : "2px solid transparent",
+    color: isActive ? "#70CAD1" : "#aaa",
+    fontWeight: isActive ? "600" : "400",
+    transition: "all 0.2s ease",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    fontSize: "0.85em",
+    fontFamily: "system-ui, -apple-system, sans-serif",
+});
+
+
 const StorageModal = observer(() => {
     const section = store.storageModalTarget;
     const { shouldRender, style } = useModalTransition(!!section);
 
     if (!shouldRender) return null;
-
-    const tabStyle = (isActive) => ({
-        padding: "10px 15px",
-        cursor: "pointer",
-        borderBottom: isActive ? "2px solid #70CAD1" : "2px solid transparent",
-        color: isActive ? "#70CAD1" : "#aaa",
-        fontWeight: isActive ? "600" : "400",
-        transition: "all 0.2s ease"
-    });
 
     const disks = Object.values(store.disks);
 
@@ -788,6 +843,36 @@ const StorageHeader = observer(({ section }) => {
     );
 });
 
+const InfoGrid = ({ items, isSmallScreen, noBorder }) => (
+    <div
+        style={{
+            borderRadius: noBorder ? null : 8,
+            overflow: "hidden",
+            border: noBorder ? null : "1px solid rgba(255, 255, 255, 0.1)",
+            padding: noBorder ? null : 15,
+            display: "flex",
+            flexDirection: isSmallScreen ? "column" : "row",
+            flexWrap: "wrap",
+            gap: 15
+        }}
+    >
+        {items.map((item, i) => (
+            <div key={i} style={{
+                flex: isSmallScreen ? "1 1 100%" : "1 1 30%",
+                minWidth: isSmallScreen ? null : "150px",
+                border: "1px solid rgba(255, 255, 255, 0.05)",
+                borderRadius: 6,
+                padding: "8px 12px",
+                backgroundColor: "rgba(255, 255, 255, 0.02)",
+                width: isSmallScreen ? 'calc(100% - 26px)' : null
+            }}>
+                <div style={{ fontSize: '0.7em', fontWeight: 600, opacity: 0.4, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4, fontFamily: 'system-ui, -apple-system, sans-serif' }}>{item.label}</div>
+                <div style={{ fontSize: '1.1em', fontWeight: 600, letterSpacing: '-0.02em', color: item.color || "inherit" }}>{item.value}</div>
+            </div>
+        ))}
+    </div>
+);
+
 const StorageContent = observer(({ target }) => {
     if (!target) return null;
     const data = store.storageInfo[target];
@@ -798,12 +883,73 @@ const StorageContent = observer(({ target }) => {
     const info = data.info;
     const smart = info.metrics.smart;
     const fs = info.metrics.filesystem;
+    const scrub = info.metrics.scrub;
 
-    const tdStyle = { padding: 8, opacity: 0.8, width: "100%" };
-    const tdRightStyle = { textAlign: "right" };
+    const isSmallScreen = store.windowWidth < SMALL_WIDTH || store.windowHeight < SMALL_HEIGHT;
 
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            {scrub && (
+                <>
+                    <div
+                        style={{
+                            marginBottom: 15,
+                            borderRadius: 8,
+                            overflow: "hidden",
+                            border: "1px solid rgba(255, 255, 255, 0.1)",
+                            padding: 15,
+                            display: "flex",
+                            flexDirection: isSmallScreen ? "column" : "row",
+                            gap: isSmallScreen ? 15 : 20
+                        }}
+                    >
+                        <div style={{
+                            flex: 1.5,
+                            borderBottom: isSmallScreen && ((scrub.eta || scrub.timeLeft)) ? '1px solid #333' : 'none',
+                            borderRight: !isSmallScreen && ((scrub.eta || scrub.timeLeft)) ? '1px solid #333' : 'none',
+                            paddingRight: !isSmallScreen && ((scrub.eta || scrub.timeLeft)) ? 15 : 0,
+                            paddingBottom: isSmallScreen && ((scrub.eta || scrub.timeLeft)) ? 15 : 0
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                                <i data-feather="refresh-cw" style={{ width: 14, height: 14, color: '#70CAD1', opacity: 0.8 }}></i>
+                                <span style={{ fontSize: '0.8em', fontWeight: 600, opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Scrub Progress</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                                <div style={{ fontSize: '1.2em', fontWeight: 700, color: '#70CAD1', fontFamily: 'monospace' }}>{scrub.progress.toFixed(2)}%</div>
+                                <div style={{ fontSize: '1.1em', fontWeight: 700, color: scrub.status === 'finished' ? COLOR_SAFE : (scrub.status === 'interrupted' ? COLOR_STOPS[1].color : '#70CAD1'), fontFamily: 'monospace', textTransform: 'uppercase' }}>{scrub.status}</div>
+                            </div>
+                            <>
+                                <div style={{ width: '100%', height: 6, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 3, marginTop: 8, overflow: 'hidden' }}>
+                                    <div style={{
+                                        width: `${scrub.progress}%`,
+                                        height: '100%',
+                                        backgroundColor: scrub.status === 'finished' ? COLOR_SAFE : (scrub.status === 'interrupted' ? COLOR_STOPS[1].color : COLOR_STOPS[0].color),
+                                        transition: 'width 0.3s ease, background-color 0.3s ease'
+                                    }}></div>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 8, fontSize: '0.85em', color: '#eee', opacity: 0.8, fontWeight: 600 }}>
+                                    <div>{scrub.rate.replace('iB', 'B')}</div>
+                                    <div>{formatBytes(scrub.bytesScrubbed, 2, "B")} / {formatBytes(scrub.totalToScrub, 2, "B")}</div>
+                                </div>
+                            </>
+                        </div>
+
+                        {(scrub.eta || scrub.timeLeft) && (
+                            <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-start", gap: 12, paddingLeft: isSmallScreen ? 0 : 5 }}>
+                                <InfoGrid
+                                    noBorder={true}
+                                    isSmallScreen={isSmallScreen}
+                                    items={[
+                                        { label: "ETA", value: scrub.eta },
+                                        { label: "Left", value: scrub.timeLeft },
+                                    ]}
+                                />
+                            </div>
+                        )}
+                    </div>
+                </>
+            )}
+
             <h3
                 style={{
                     borderBottom: "1px solid #444",
@@ -813,34 +959,17 @@ const StorageContent = observer(({ target }) => {
             >
                 Drive Health
             </h3>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <tbody>
-                    <tr>
-                        <td style={tdStyle}>Spare blocks</td>
-                        <td style={tdRightStyle}>{smart.spare.formatted}</td>
-                    </tr>
-                    <tr>
-                        <td style={tdStyle}>Wear level</td>
-                        <td style={tdRightStyle}>{smart.wear.formatted}</td>
-                    </tr>
-                    <tr>
-                        <td style={tdStyle}>Media errors</td>
-                        <td style={tdRightStyle}>{smart.mediaErrors.formatted}</td>
-                    </tr>
-                    <tr>
-                        <td style={tdStyle}>Age</td>
-                        <td style={tdRightStyle}>{smart.powerOnTime.formatted}</td>
-                    </tr>
-                    <tr>
-                        <td style={tdStyle}>Total written</td>
-                        <td style={tdRightStyle}>{smart.dataWritten.formatted}</td>
-                    </tr>
-                    <tr>
-                        <td style={tdStyle}>Total read</td>
-                        <td style={tdRightStyle}>{smart.dataRead.formatted}</td>
-                    </tr>
-                </tbody>
-            </table>
+            <InfoGrid
+                isSmallScreen={isSmallScreen}
+                items={[
+                    { label: "Spare blocks", value: smart.spare.formatted },
+                    { label: "Wear level", value: smart.wear.formatted },
+                    { label: "Media errors", value: smart.mediaErrors.formatted },
+                    { label: "Age", value: smart.powerOnTime.formatted },
+                    { label: "Total written", value: smart.dataWritten.formatted },
+                    { label: "Total read", value: smart.dataRead.formatted }
+                ]}
+            />
 
             <h3
                 style={{
@@ -851,30 +980,16 @@ const StorageContent = observer(({ target }) => {
             >
                 BTRFS Status
             </h3>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <tbody>
-                    <tr>
-                        <td style={tdStyle}>Write errors</td>
-                        <td style={tdRightStyle}>{fs.writeErrors}</td>
-                    </tr>
-                    <tr>
-                        <td style={tdStyle}>Read errors</td>
-                        <td style={tdRightStyle}>{fs.readErrors}</td>
-                    </tr>
-                    <tr>
-                        <td style={tdStyle}>Flush errors</td>
-                        <td style={tdRightStyle}>{fs.flushErrors}</td>
-                    </tr>
-                    <tr>
-                        <td style={tdStyle}>Corruption errors</td>
-                        <td style={tdRightStyle}>{fs.corruptionErrors}</td>
-                    </tr>
-                    <tr>
-                        <td style={tdStyle}>Generation errors</td>
-                        <td style={tdRightStyle}>{fs.generationErrors}</td>
-                    </tr>
-                </tbody>
-            </table>
+            <InfoGrid
+                isSmallScreen={isSmallScreen}
+                items={[
+                    { label: "Write errors", value: fs.writeErrors, color: fs.writeErrors > 0 ? COLOR_STOPS[2].color : undefined },
+                    { label: "Read errors", value: fs.readErrors, color: fs.readErrors > 0 ? COLOR_STOPS[2].color : undefined },
+                    { label: "Flush errors", value: fs.flushErrors, color: fs.flushErrors > 0 ? COLOR_STOPS[2].color : undefined },
+                    { label: "Corruption errors", value: fs.corruptionErrors, color: fs.corruptionErrors > 0 ? COLOR_STOPS[2].color : undefined },
+                    { label: "Generation errors", value: fs.generationErrors, color: fs.generationErrors > 0 ? COLOR_STOPS[2].color : undefined }
+                ]}
+            />
         </div>
     );
 });
@@ -1059,6 +1174,7 @@ const Monitor = observer(() => {
                                 label={`SSD (${disk.name})`}
                                 className="temperature"
                                 featherName="hard-drive"
+                                storageKey={disk.label}
                                 clickFn={() => (store.storageModalTarget = disk.label)}
                                 textColor={STORAGE_TEXT_COLOR[store.storageInfo[disk.label]?.info?.status || 0]}
                                 textExtra={STORAGE_EXTRA_TEXT[store.storageInfo[disk.label]?.info?.status || 0]}
