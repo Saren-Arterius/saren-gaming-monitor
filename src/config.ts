@@ -100,6 +100,16 @@ export const CONFIG = {
                 "tempField": "Composite",
                 "tempInput": "temp1_input"
             }
+        },
+        backupHDD: {
+            label: 'backupHDD',
+            name: 'Backup',
+            "device": "/dev/disk/by-id/ata-WDC_WUH722222ALE6L4_1PG886YV",
+            "mountPoint": "/mnt/backup",
+            "tempLimit": {
+                "min": 30,
+                "max": 60
+            }
         }
     }
 };

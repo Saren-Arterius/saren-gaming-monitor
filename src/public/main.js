@@ -377,7 +377,7 @@ function getGMT8Time(t) {
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
-const ScrubMiniProgress = observer(({ storageKey, isSmallScreen }) => {
+const ScrubMiniProgress = observer(({ storageKey, isSmallScreen, small }) => {
     if (!storageKey) return null;
     const storageData = store.storageInfo[storageKey];
     const scrub = storageData?.info?.metrics?.scrub;
@@ -401,7 +401,7 @@ const ScrubMiniProgress = observer(({ storageKey, isSmallScreen }) => {
                 marginTop: 4,
                 overflow: "hidden",
                 position: "absolute",
-                bottom: isSmallScreen ? -36 : -20,
+                bottom: (isSmallScreen ? -36 : -20) - (small ? 30 : 0),
                 left: isSmallScreen ? null : "10%"
             }}
         >
@@ -551,7 +551,7 @@ const Gauge = ({
                             {!isSmallScreen && labelExtras ? " / " + labelExtras : ""}
                         </div>
                         {isSmallScreen && <div className="gauge-label">{labelExtras}</div>}
-                        <ScrubMiniProgress storageKey={storageKey} isSmallScreen={isSmallScreen} />
+                        <ScrubMiniProgress storageKey={storageKey} isSmallScreen={isSmallScreen} small={small} />
                     </div>
                 </div>
             </div>
@@ -966,8 +966,10 @@ const StorageContent = observer(({ target }) => {
                     { label: "Wear level", value: smart.wear.formatted },
                     { label: "Media errors", value: smart.mediaErrors.formatted },
                     { label: "Age", value: smart.powerOnTime.formatted },
-                    { label: "Total written", value: smart.dataWritten.formatted },
-                    { label: "Total read", value: smart.dataRead.formatted }
+                    ...[
+                        smart.dataWritten.formatted !== 'N/A' ? { label: "Total written", value: smart.dataWritten.formatted } : null,
+                        smart.dataRead.formatted !== 'N/A' ? { label: "Total read", value: smart.dataRead.formatted } : null
+                    ].filter(s => s)
                 ]}
             />
 
@@ -1125,6 +1127,7 @@ const Monitor = observer(() => {
     const isUsingBackupNetwork = store.io.isUsingBackup;
     const systemSSD = store.disks['systemSSD'];
 
+    let useSmall = Object.keys(store.disks).length >= 2;
     console.log("render");
 
     return (
@@ -1149,6 +1152,7 @@ const Monitor = observer(() => {
                     <div className="section-title">Temperature</div>
                     <div className="gauge-container">
                         <Gauge
+                            small={useSmall}
                             value={store.temperatures.cpu}
                             min={store.GAUGE_LIMITS.temperature.cpu.min}
                             max={store.GAUGE_LIMITS.temperature.cpu.max}
@@ -1157,6 +1161,7 @@ const Monitor = observer(() => {
                             featherName="cpu"
                         />
                         <Gauge
+                            small={useSmall}
                             value={store.temperatures.gpu}
                             min={store.GAUGE_LIMITS.temperature.gpu.min}
                             max={store.GAUGE_LIMITS.temperature.gpu.max}
@@ -1167,11 +1172,12 @@ const Monitor = observer(() => {
                         />
                         {Object.values(store.disks).map((disk) => (
                             <Gauge
+                                small={useSmall}
                                 key={disk.label}
                                 value={disk.temperature}
                                 min={disk.temperatureLimit.min}
                                 max={disk.temperatureLimit.max}
-                                label={`SSD (${disk.name})`}
+                                label={`${disk.label.includes('HDD') ? 'HDD' : 'SSD'} (${disk.name})`}
                                 className="temperature"
                                 featherName="hard-drive"
                                 storageKey={disk.label}
@@ -1241,7 +1247,7 @@ const Monitor = observer(() => {
                     <div className="section-title">I/O</div>
                     <div className="gauge-container" style={{ marginTop: isSmallLandscape ? 20 : undefined }}>
                         <Gauge
-                            value={systemSSD ? systemSSD.diskRead : store.io.diskRead}
+                            value={/*systemSSD ? systemSSD.diskRead : */store.io.diskRead}
                             max={store.GAUGE_LIMITS.io.diskRead.max}
                             label="System Read"
                             className="io"
@@ -1249,7 +1255,7 @@ const Monitor = observer(() => {
                             small
                         />
                         <Gauge
-                            value={systemSSD ? systemSSD.diskWrite : store.io.diskWrite}
+                            value={/*systemSSD ? systemSSD.diskWrite : */store.io.diskWrite}
                             max={store.GAUGE_LIMITS.io.diskWrite.max}
                             label="System Write"
                             className="io"

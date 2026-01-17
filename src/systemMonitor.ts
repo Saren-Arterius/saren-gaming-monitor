@@ -41,6 +41,8 @@ export class SystemMonitor {
         return acc;
     }, {} as StorageInfoMap);
 
+    private smartCache: { [label: string]: any } = {};
+
     async resolveDeviceNames(): Promise<void> {
         if (Object.keys(this.deviceNames).length > 0) return;
 
@@ -160,21 +162,28 @@ export class SystemMonitor {
 
         const timeDiff = this.lastStats ? (now - this.lastStats.lastUpdate) / 1000 : 0;
 
-        for (const disk of Object.values(CONFIG.disks)) {
+        for (const disk of Object.values(CONFIG.disks) as any[]) {
             const stats = data.storageStats[disk.label];
             // df output split by \s+:
             // 0: device, 1: total, 2: used, 3: avail, 4: use%, 5: mount
             const usage = stats ? parseInt(stats[4].replace('%', '')) : 0;
             const usageGB = stats ? Math.round(parseInt(stats[2]) / 1024) : 0;
 
-            let temperature = 0;
+            let temperature = -274;
             if (disk.sensor) {
                 try {
                     temperature = Math.round(parseFloat(data.sensors[disk.sensor.temperature][disk.sensor.tempField][disk.sensor.tempInput]));
                 } catch (e) {
                     // console.error(`Failed to read temperature for ${disk.label}`, e);
                 }
+            } else {
+                const smartData = this.smartCache[disk.label];
+                if (smartData && smartData.temperature && typeof smartData.temperature.current === 'number') {
+                    temperature = smartData.temperature.current;
+                }
             }
+
+            if (temperature === -274) continue; // device not found
 
             let diskRead = 0;
             let diskWrite = 0;
@@ -189,7 +198,6 @@ export class SystemMonitor {
 
                     const prevLine = findDiskStat(this.lastStats.diskstats);
                     const currentLine = findDiskStat(data.diskstats);
-
                     if (prevLine && currentLine) {
                         const prevParts = prevLine.trim().split(/\s+/);
                         const currentParts = currentLine.trim().split(/\s+/);
@@ -251,9 +259,9 @@ export class SystemMonitor {
                 routeMetrics: {},
             },
             fanSpeed: {
-                cpu: !CONFIG.sensors.fans.cpu ? 0 : parseInt(data.sensors[CONFIG.sensors.fans.cpu.controller][CONFIG.sensors.fans.cpu.id][CONFIG.sensors.fans.cpu.input]),
-                motherboard: !CONFIG.sensors.fans.motherboard ? 0 : parseInt(data.sensors[CONFIG.sensors.fans.motherboard.controller][CONFIG.sensors.fans.motherboard.id][CONFIG.sensors.fans.motherboard.input]),
-                ssd: !CONFIG.sensors.fans.systemSSD ? 0 : parseInt(data.sensors[CONFIG.sensors.fans.systemSSD.controller][CONFIG.sensors.fans.systemSSD.id][CONFIG.sensors.fans.systemSSD.input])
+                cpu: !CONFIG.sensors.fans.cpu ? 0 : parseInt(data.sensors[(CONFIG.sensors.fans.cpu as any).controller][(CONFIG.sensors.fans.cpu as any).id][(CONFIG.sensors.fans.cpu as any).input]),
+                motherboard: !CONFIG.sensors.fans.motherboard ? 0 : parseInt(data.sensors[(CONFIG.sensors.fans.motherboard as any).controller][(CONFIG.sensors.fans.motherboard as any).id][(CONFIG.sensors.fans.motherboard as any).input]),
+                ssd: !CONFIG.sensors.fans.systemSSD ? 0 : parseInt(data.sensors[(CONFIG.sensors.fans.systemSSD as any).controller][(CONFIG.sensors.fans.systemSSD as any).id][(CONFIG.sensors.fans.systemSSD as any).input])
             },
             disks: disksMetrics,
             frequencies: {
@@ -415,44 +423,118 @@ export class SystemMonitor {
             results.status = Math.max(results.status, level);
         };
 
+        if (!smartData || !smartData.smart_status) {
+            addIssue('SMART data unavailable', 1);
+            return results;
+        }
+
         // === SMART Analysis ===
-        const health = smartData.nvme_smart_health_information_log;
+        const nvmeHealth = smartData.nvme_smart_health_information_log;
 
-        // Critical Warning
-        if (health.critical_warning !== 0) {
-            addIssue(`Critical warning detected (code: ${health.critical_warning})`, 2);
-        }
+        if (nvmeHealth) {
+            // NVME specific
+            if (nvmeHealth.critical_warning !== 0) {
+                addIssue(`Critical warning detected (code: ${nvmeHealth.critical_warning})`, 2);
+            }
 
-        // Available Spare
-        results.metrics.smart.spare = {
-            current: health.available_spare,
-            threshold: health.available_spare_threshold,
-            formatted: `${health.available_spare}% spare (threshold: ${health.available_spare_threshold}%)`
-        };
-        if (health.available_spare <= health.available_spare_threshold) {
-            addIssue('Available spare blocks below threshold', 2);
-        } else if (health.available_spare <= health.available_spare_threshold * 1.5) {
-            addIssue('Available spare blocks approaching threshold', 1);
-        }
+            results.metrics.smart.spare = {
+                current: nvmeHealth.available_spare,
+                threshold: nvmeHealth.available_spare_threshold,
+                formatted: `${nvmeHealth.available_spare}% spare (threshold: ${nvmeHealth.available_spare_threshold}%)`
+            };
+            if (nvmeHealth.available_spare <= nvmeHealth.available_spare_threshold) {
+                addIssue('Available spare blocks below threshold', 2);
+            }
 
-        // Wear Level
-        results.metrics.smart.wear = {
-            percentage: health.percentage_used,
-            formatted: `${health.percentage_used}% worn`
-        };
-        if (health.percentage_used >= 90) {
-            addIssue('Drive severely worn', 2);
-        } else if (health.percentage_used >= 80) {
-            addIssue('Drive significantly worn', 1);
-        }
+            results.metrics.smart.wear = {
+                percentage: nvmeHealth.percentage_used,
+                formatted: `${nvmeHealth.percentage_used}% worn`
+            };
 
-        // Media Errors
-        results.metrics.smart.mediaErrors = {
-            count: health.media_errors,
-            formatted: `${health.media_errors} media errors`
-        };
-        if (health.media_errors > 0) {
-            addIssue(`${health.media_errors} media errors detected`, 2);
+            results.metrics.smart.mediaErrors = {
+                count: nvmeHealth.media_errors,
+                formatted: `${nvmeHealth.media_errors} media errors`
+            };
+            if (nvmeHealth.media_errors > 0) {
+                addIssue(`${nvmeHealth.media_errors} media errors detected`, 2);
+            }
+
+            results.metrics.smart.dataWritten = {
+                units: nvmeHealth.data_units_written,
+                formatted: `${(nvmeHealth.data_units_written * 512000 / (1024 * 1024 * 1024 * 1024)).toFixed(2)} TB written`
+            };
+
+            results.metrics.smart.dataRead = {
+                units: nvmeHealth.data_units_read,
+                formatted: `${(nvmeHealth.data_units_read * 512000 / (1024 * 1024 * 1024 * 1024)).toFixed(2)} TB read`
+            };
+        } else if (smartData.ata_smart_attributes && smartData.ata_smart_attributes.table) {
+            // HDD / ATA specific
+            const attrMap = new Map<number, any>();
+            for (const attr of smartData.ata_smart_attributes.table) {
+                attrMap.set(attr.id, attr);
+            }
+
+            // Media Errors: Reallocated + Pending + Uncorrectable
+            const reallocated = attrMap.get(5)?.raw.value || 0;
+            const pending = attrMap.get(197)?.raw.value || 0;
+            const uncorrectable = attrMap.get(198)?.raw.value || 0;
+            const totalMediaErrors = reallocated + pending + uncorrectable;
+
+            results.metrics.smart.mediaErrors = {
+                count: totalMediaErrors,
+                formatted: `${totalMediaErrors} errors (R:${reallocated} P:${pending} U:${uncorrectable})`
+            };
+            if (totalMediaErrors > 0) {
+                addIssue(`${totalMediaErrors} media errors detected (Reallocated: ${reallocated}, Pending: ${pending}, Uncorrectable: ${uncorrectable})`, 2);
+            }
+
+            // Spare: Use Reallocated Sector Count as a proxy for "spare used"
+            // Most HDDs don't report "available spare" as a percentage like NVMe
+            // We'll use the normalized value of Reallocated_Sector_Ct (id 5)
+            const reallocatedAttr = attrMap.get(5);
+            if (reallocatedAttr) {
+                results.metrics.smart.spare = {
+                    current: reallocatedAttr.value,
+                    threshold: reallocatedAttr.thresh,
+                    formatted: `${reallocatedAttr.value}% remaining`
+                };
+                if (reallocatedAttr.value <= reallocatedAttr.thresh) {
+                    addIssue('Reallocated sectors threshold reached', 2);
+                }
+            }
+
+            // Wear: Helium level for high-capacity drives, or just N/A
+            const helium = attrMap.get(22);
+            if (helium) {
+                results.metrics.smart.wear = {
+                    percentage: 100 - helium.value,
+                    formatted: `Helium Level: ${helium.value}%`
+                };
+                if (helium.value < helium.thresh) {
+                    addIssue(`Low helium level detected: ${helium.value}%`, 2);
+                }
+            } else {
+                results.metrics.smart.wear = { percentage: 0, formatted: "N/A" };
+            }
+
+            // Data Written/Read: Not standard for ATA SMART, but some drives have vendor-specific attributes
+            // For the provided HC570, NAND_Master (90) seems to be present but its meaning is unclear.
+            // We'll leave these as N/A unless we find specific attributes.
+            results.metrics.smart.dataWritten = { units: 0, formatted: "N/A" };
+            results.metrics.smart.dataRead = { units: 0, formatted: "N/A" };
+
+            // UDMA CRC Errors
+            const crcErrors = attrMap.get(199)?.raw.value || 0;
+            if (crcErrors > 0) {
+                addIssue(`${crcErrors} UDMA CRC errors detected (check cable)`, 1);
+            }
+        } else {
+            results.metrics.smart.spare = { current: 100, threshold: 0, formatted: "N/A" };
+            results.metrics.smart.wear = { percentage: 0, formatted: "N/A" };
+            results.metrics.smart.mediaErrors = { count: 0, formatted: "N/A" };
+            results.metrics.smart.dataWritten = { units: 0, formatted: "N/A" };
+            results.metrics.smart.dataRead = { units: 0, formatted: "N/A" };
         }
 
         // SMART Status
@@ -468,21 +550,15 @@ export class SystemMonitor {
             }
         }
 
-        // Power-on time and read/write statistics
-        results.metrics.smart.powerOnTime = {
-            hours: smartData.power_on_time.hours,
-            formatted: `${Math.floor(smartData.power_on_time.hours / 24)} days, ${smartData.power_on_time.hours % 24} hours`
-        };
-
-        results.metrics.smart.dataWritten = {
-            units: health.data_units_written,
-            formatted: `${(health.data_units_written * 512000 / (1024 * 1024 * 1024 * 1024)).toFixed(2)} TB written`
-        };
-
-        results.metrics.smart.dataRead = {
-            units: health.data_units_read,
-            formatted: `${(health.data_units_read * 512000 / (1024 * 1024 * 1024 * 1024)).toFixed(2)} TB read`
-        };
+        // Power-on time
+        if (smartData.power_on_time) {
+            results.metrics.smart.powerOnTime = {
+                hours: smartData.power_on_time.hours,
+                formatted: `${Math.floor(smartData.power_on_time.hours / 24)} days, ${smartData.power_on_time.hours % 24} hours`
+            };
+        } else {
+            results.metrics.smart.powerOnTime = { hours: 0, formatted: "N/A" };
+        }
 
         // === BTRFS Analysis ===
         if (btrfsData) {
@@ -558,7 +634,18 @@ export class SystemMonitor {
         }
 
         const scrubStatus = isBtrfs ? this.parseBtrfsScrubStatus(scrubStdout) : null;
-        const health = this.analyzeStorageHealth(JSON.parse(smart), JSON.parse(btrfsStats), scrubStatus);
+        let smartJson = null;
+        try {
+            smartJson = JSON.parse(smart);
+            this.smartCache[label] = smartJson;
+        } catch (e) { }
+
+        let btrfsJson = null;
+        try {
+            btrfsJson = JSON.parse(btrfsStats);
+        } catch (e) { }
+
+        const health = this.analyzeStorageHealth(smartJson, btrfsJson, scrubStatus);
 
         if (scrubStatus) {
             health.metrics.scrub = scrubStatus;
