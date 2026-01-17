@@ -54,7 +54,8 @@ export const CONFIG = {
     server: {
         port: 3000,
         corsOrigin: "*",
-        corsMethods: ["GET", "POST"]
+        corsMethods: ["GET", "POST"],
+        trustedHost: 'monitor-ts.wtako.net'
     },
     commands: {
         sensors: {

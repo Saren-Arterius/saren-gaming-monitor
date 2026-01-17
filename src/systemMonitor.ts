@@ -85,7 +85,7 @@ export class SystemMonitor {
         return this.networkMetrics;
     }
 
-    getNetworkMetricsPartial() {
+    getNetworkMetricsPartial(includeIPHistory: boolean = false) {
         if (!this.networkMetrics) {
             return null;
         }
@@ -94,7 +94,8 @@ export class SystemMonitor {
             internet_ports: this.networkMetrics.internet_ports,
             ping_statistics: this.networkMetrics.ping_statistics,
             network_traffic: this.networkMetrics.network_traffic,
-            last_updated: this.networkMetrics.last_updated
+            last_updated: this.networkMetrics.last_updated,
+            ...(includeIPHistory ? { ip_history: this.networkMetrics.ip_history } : {})
         };
     }
 

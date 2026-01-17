@@ -1170,6 +1170,42 @@ const NetworkContent = observer(() => {
                     </tbody>
                 </table>
             </div>
+
+            {store.networkMetrics.ip_history && store.networkMetrics.ip_history.length > 0 && (
+                <div>
+                    <h3
+                        style={{
+                            borderBottom: "1px solid #444",
+                            paddingBottom: 5,
+                            marginTop: 15
+                        }}
+                    >
+                        IP History
+                    </h3>
+                    <table
+                        style={{
+                            width: "100%",
+                            borderCollapse: "collapse",
+                            fontSize: "0.9em"
+                        }}
+                    >
+                        <thead>
+                            <tr>
+                                <th style={thStyle}>IP Address</th>
+                                <th style={{ ...thStyle, textAlign: "right" }}>Recorded at (HKT)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {store.networkMetrics.ip_history.map((h, i) => (
+                                <tr key={i}>
+                                    <td style={{ ...tdStyle, width: "100%" }}>{h.ip}</td>
+                                    <td style={numStyle}>{getGMT8Time(h.timestamp)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
         </div>
     );
 });
@@ -1473,6 +1509,7 @@ const NetworkBars = observer(({ isSmallLandscape }) => {
     const trafficHistory = store.networkMetrics?.network_traffic?.minute_history || [];
     const pingStatistics = store.networkMetrics?.ping_statistics;
     const internetPorts = store.networkMetrics?.internet_ports || [];
+    const ipHistory = store.networkMetrics?.ip_history || [];
     const networkLastUpdated = store.networkMetrics?.last_updated;
     console.log("NetworkBars", minuteHistory);
 
@@ -1584,6 +1621,7 @@ const NetworkBars = observer(({ isSmallLandscape }) => {
                     }}
                 >
                     <div style={{ fontWeight: 400, opacity: 0.5, marginLeft: -2 }}>
+                        {ipHistory.length > 0 && <span style={{ marginRight: 8 }}>{ipHistory[0].ip}</span>}
                         {internetPorts.map((s) => s.replace(/open/g, "").trim()).join(", ")}
                     </div>
                     <div

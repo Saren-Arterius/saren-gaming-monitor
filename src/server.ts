@@ -52,10 +52,10 @@ export class AppServer {
             try {
                 const metrics = this.systemMonitor.getMetrics();
                 const storageInfo = this.systemMonitor.getStorageInfo();
-                const networkMetrics = JSON.parse(JSON.stringify(this.systemMonitor.getNetworkMetrics() || {}));
-                if (url.searchParams.get('secret') != process.env.SECRET) {
-                    delete networkMetrics.ip_history;
-                }
+                const host = req.headers.get('host');
+                const includeIPHistory = host === CONFIG.server.trustedHost;
+                const networkMetrics = this.systemMonitor.getNetworkMetricsPartial(includeIPHistory);
+
                 return Response.json({
                     info: CONFIG.initInfo,
                     metrics,
@@ -82,11 +82,20 @@ export class AppServer {
     private setupSocketIO() {
         this.io.on('connection', (socket) => {
             console.log('Client connected:', socket.id);
+            const host = socket.handshake.headers.host;
+            const isTrusted = host === CONFIG.server.trustedHost;
+
+            if (isTrusted) {
+                socket.join('trusted');
+            } else {
+                socket.join('default');
+            }
+
             socket.emit('initInfo', CONFIG.initInfo);
             socket.emit('metrics', this.systemMonitor.getMetrics());
             socket.emit('storageInfo', { storageInfo: this.systemMonitor.getStorageInfo() });
             socket.emit('networkMetrics', {
-                networkMetrics: this.systemMonitor.getNetworkMetricsPartial(),
+                networkMetrics: this.systemMonitor.getNetworkMetricsPartial(isTrusted),
                 iotMetrics: this.iotMonitor.getCachedData(),
                 internetMetrics: this.internetMonitor.getCachedData()
             });
@@ -110,10 +119,20 @@ export class AppServer {
             while (true) {
                 try {
                     await this.systemMonitor.updateNetworkMetrics();
-                    this.io.emit('networkMetrics', {
-                        networkMetrics: this.systemMonitor.getNetworkMetricsPartial(),
-                        iotMetrics: this.iotMonitor.getCachedData(),
-                        internetMetrics: this.internetMonitor.getCachedData()
+
+                    const iotMetrics = this.iotMonitor.getCachedData();
+                    const internetMetrics = this.internetMonitor.getCachedData();
+
+                    this.io.to('trusted').emit('networkMetrics', {
+                        networkMetrics: this.systemMonitor.getNetworkMetricsPartial(true),
+                        iotMetrics,
+                        internetMetrics
+                    });
+
+                    this.io.to('default').emit('networkMetrics', {
+                        networkMetrics: this.systemMonitor.getNetworkMetricsPartial(false),
+                        iotMetrics,
+                        internetMetrics
                     });
                 } catch (e) {
                     console.error(e);
