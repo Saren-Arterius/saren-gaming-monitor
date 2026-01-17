@@ -5,6 +5,20 @@ export interface LastStats {
     lastUpdate: number;
 }
 
+export interface BtrfsScrubStatus {
+    uuid: string;
+    scrubStarted?: number; // timestamp
+    status: 'running' | 'finished' | 'aborted' | 'interrupted' | 'none';
+    duration: string;
+    timeLeft: string;
+    eta: string;
+    totalToScrub: number; // bytes
+    bytesScrubbed: number; // bytes
+    rate: string;
+    errorSummary: string;
+    progress: number; // 0-100
+}
+
 export interface SSDMetrics {
     label: string;
     name: string;
@@ -129,4 +143,36 @@ export interface NetworkMetrics {
     };
     network_traffic: NetworkTraffic;
     last_updated: number;
+}
+
+export interface StorageHealthInfo {
+    status: number;
+    statusText?: string;
+    issues: string[];
+    metrics: {
+        smart: {
+            spare?: { current: number; threshold: number; formatted: string };
+            wear?: { percentage: number; formatted: string };
+            mediaErrors?: { count: number; formatted: string };
+            powerOnTime?: { hours: number; formatted: string };
+            dataWritten?: { units: number; formatted: string };
+            dataRead?: { units: number; formatted: string };
+        };
+        filesystem: {
+            writeErrors: number;
+            readErrors: number;
+            flushErrors: number;
+            corruptionErrors: number;
+            generationErrors: number;
+        };
+        scrub?: BtrfsScrubStatus;
+    };
+}
+
+export interface StorageInfoMap {
+    [label: string]: {
+        paths: string[];
+        lastUpdate: number;
+        info: StorageHealthInfo;
+    };
 }
