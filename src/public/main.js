@@ -1856,7 +1856,7 @@ const Monitor = observer(() => {
                                 max={store.GAUGE_LIMITS.temperature.cx5.max}
                                 label="CX5"
                                 className="temperature"
-                                featherName="activity"
+                                featherName="globe"
                                 small
                             />
                         )}
