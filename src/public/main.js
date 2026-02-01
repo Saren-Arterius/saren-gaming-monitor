@@ -6,6 +6,7 @@ const WAKE_WORD_SPEECH_TIMEOUT = 3000;
 const HA_URL = location.hostname.includes('direct2') ? 'https://ha-direct2.wtako.net' : 'https://ha-direct.wtako.net';
 const ASSETS_HOST = location.hostname.includes('direct2') ? 'https://monitor-direct2.wtako.net' : 'https://monitor-direct.wtako.net';
 const BASE = ASSETS_HOST; // Alias for assets host
+const IS_EMBED = new URLSearchParams(window.location.search).get('embed') === '1';
 
 const EXIT_MAGIC = 'XXEXITXX';
 const REFRESH_MAGIC = 'XXREFRESHXX';
@@ -755,6 +756,71 @@ const StorageModal = observer(() => {
     );
 });
 
+const StorageModalCompat = observer(() => {
+    const section = store.storageModalTarget;
+    const { shouldRender, style } = useModalTransition(!!section);
+
+    if (!shouldRender) return null;
+
+    const data = store.storageInfo[section];
+    if (!data || !data.info) return null;
+
+    const info = data.info;
+    const smart = info.metrics.smart;
+    const fs = info.metrics.filesystem;
+    const statusColor = STORAGE_TEXT_COLOR[info.status] || getColorAtPercent(0);
+
+    return (
+        <div
+            style={{
+                position: "fixed",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: "100%",
+                backgroundColor: "rgba(0,0,0,0.95)",
+                zIndex: 1000,
+                padding: 10,
+                boxSizing: "border-box",
+                overflowY: "auto",
+                fontSize: "0.9em",
+                ...style
+            }}
+            onClick={() => (store.storageModalTarget = null)}
+        >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <div style={{ fontSize: "1.2em", fontWeight: "bold" }}>{section} Health</div>
+                <div style={{ fontSize: "1.5em" }}>✕</div>
+            </div>
+
+            <div style={{ color: statusColor, fontWeight: "bold", marginBottom: 10 }}>
+                Status: {info.statusText}
+            </div>
+
+            <div style={{ marginBottom: 15 }}>
+                <div style={{ opacity: 0.6, fontSize: "0.8em", marginBottom: 8 }}>SMART Metrics</div>
+                <InfoGrid
+                    isSmallScreen={true}
+                    noBorder={true}
+                    compact={true}
+                    items={[
+                        { label: "Wear level", value: smart.wear.formatted },
+                        { label: "Spare blocks", value: smart.spare.formatted },
+                        { label: "Media errors", value: smart.mediaErrors.formatted },
+                        { label: "Age", value: smart.powerOnTime.formatted },
+                        ...(smart.dataWritten.formatted !== 'N/A' ? [{ label: "Total written", value: smart.dataWritten.formatted }] : []),
+                        ...(smart.dataRead.formatted !== 'N/A' ? [{ label: "Total read", value: smart.dataRead.formatted }] : [])
+                    ]}
+                />
+            </div>
+
+            <div style={{ marginTop: 20, opacity: 0.4, fontSize: "0.7em", textAlign: "center" }}>
+                Tap anywhere to close
+            </div>
+        </div>
+    );
+});
+
 const StorageHeader = observer(({ section }) => {
     useEffect(() => {
         feather.replace();
@@ -837,31 +903,31 @@ const StorageHeader = observer(({ section }) => {
     );
 });
 
-const InfoGrid = ({ items, isSmallScreen, noBorder }) => (
+const InfoGrid = ({ items, isSmallScreen, noBorder, compact }) => (
     <div
         style={{
             borderRadius: noBorder ? null : 8,
             overflow: "hidden",
             border: noBorder ? null : "1px solid rgba(255, 255, 255, 0.1)",
-            padding: noBorder ? null : 15,
+            padding: noBorder ? (compact ? 0 : null) : 15,
             display: "flex",
-            flexDirection: isSmallScreen ? "column" : "row",
+            flexDirection: isSmallScreen && !compact ? "column" : "row",
             flexWrap: "wrap",
-            gap: 15
+            gap: compact ? 8 : 15
         }}
     >
         {items.map((item, i) => (
             <div key={i} style={{
-                flex: isSmallScreen ? "1 1 100%" : "1 1 30%",
-                minWidth: isSmallScreen ? null : "150px",
+                flex: isSmallScreen ? (compact ? "1 1 40%" : "1 1 100%") : "1 1 30%",
+                minWidth: isSmallScreen ? (compact ? "100px" : null) : "150px",
                 border: "1px solid rgba(255, 255, 255, 0.05)",
                 borderRadius: 6,
-                padding: "8px 12px",
+                padding: compact ? "4px 8px" : "8px 12px",
                 backgroundColor: "rgba(255, 255, 255, 0.02)",
-                width: isSmallScreen ? 'calc(100% - 26px)' : null
+                width: isSmallScreen ? (compact ? 'calc(50% - 12px)' : 'calc(100% - 26px)') : null
             }}>
-                <div style={{ fontSize: '0.7em', fontWeight: 600, opacity: 0.4, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4, fontFamily: 'system-ui, -apple-system, sans-serif' }}>{item.label}</div>
-                <div style={{ fontSize: '1.1em', fontWeight: 600, letterSpacing: '-0.02em', color: item.color || "inherit" }}>{item.value}</div>
+                <div style={{ fontSize: compact ? '0.6em' : '0.7em', fontWeight: 600, opacity: 0.4, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: compact ? 2 : 4, fontFamily: 'system-ui, -apple-system, sans-serif' }}>{item.label}</div>
+                <div style={{ fontSize: compact ? '0.9em' : '1.1em', fontWeight: 600, letterSpacing: '-0.02em', color: item.color || "inherit" }}>{item.value}</div>
             </div>
         ))}
     </div>
@@ -1105,6 +1171,43 @@ const FullscreenButton = () => {
     );
 };
 
+const CompactItem = ({ value, max, label, featherName, unit = "%", color, extra }) => {
+    useEffect(() => {
+        feather.replace();
+    }, []);
+
+    // Handle cases where value might be a formatted string (like formatBytes)
+    let numericValue = value;
+    if (typeof value === 'string') {
+        numericValue = parseFloat(value);
+    }
+    const pct = Math.min(100, (numericValue / max) * 100);
+
+    return (
+        <div className="compact-item">
+            <div className="compact-value" style={{ color }}>
+                {typeof value === 'number' ? Math.round(value) : value}{unit}
+            </div>
+            <div className="compact-row" style={{ padding: '0 4px', boxSizing: 'border-box' }}>
+                <i data-feather={featherName} className="compact-icon" style={{ color: getColorAtPercent(pct), filter: 'saturate(0.5)' }}></i>
+                <div className="compact-bar-container">
+                    <div
+                        className="compact-bar-fill"
+                        style={{
+                            width: `${pct}%`,
+                            "--bg-size": `${10000 / Math.max(0.1, pct)}%`
+                        }}
+                    ></div>
+                </div>
+            </div>
+            <div className="compact-label" style={{ textAlign: 'center', lineHeight: '1.1em' }}>
+                <div>{label}</div>
+                <div style={{ opacity: 0.8, visibility: extra ? null : 'hidden' }}>{extra ? extra : '.'}</div>
+            </div>
+        </div>
+    );
+};
+
 const Monitor = observer(() => {
     let loadLevel = 0;
     let fullLoadItems = Object.values(store.usage).filter((u) => u >= 80).length;
@@ -1124,8 +1227,69 @@ const Monitor = observer(() => {
     let useSmall = true;
     console.log("render");
 
+    if (IS_EMBED) {
+        const cpuFreq = `${Math.round(Math.min(...store.frequencies.cpu))}-${Math.round(Math.max(...store.frequencies.cpu))} MHz`;
+        const gpuFreq = `${store.frequencies.gpuCore} MHz`;
+        const gpuPwr = `${store.pwr.gpu} W`;
+
+        return (
+            <div className="embed-container">
+                <StorageModalCompat />
+                <div className="compact-grid">
+                    {/* Temperature */}
+                    <CompactItem value={store.temperatures.cpu} max={store.GAUGE_LIMITS.temperature.cpu.max} label="CPU" featherName="cpu" unit="°C" />
+                    <CompactItem value={store.temperatures.gpu} max={store.GAUGE_LIMITS.temperature.gpu.max} label="GPU" featherName="image" unit="°C" extra={gpuPwr} />
+                    <CompactItem value={store.temperatures.cx7} max={store.GAUGE_LIMITS.temperature.cx7.max} label="CX7" featherName="globe" unit="°C" />
+                    {Object.values(store.disks).map(disk => (
+                        <div key={disk.label} onClick={() => (store.storageModalTarget = disk.label)} style={{ cursor: 'pointer', display: 'contents' }}>
+                            <CompactItem
+                                value={disk.temperature}
+                                max={disk.temperatureLimit.max}
+                                label={disk.name}
+                                featherName="hard-drive"
+                                unit="°C"
+                                color={STORAGE_TEXT_COLOR[store.storageInfo[disk.label]?.info?.status || 0]}
+                                extra={STORAGE_EXTRA_TEXT[store.storageInfo[disk.label]?.info?.status || 0]}
+                            />
+                        </div>
+                    ))}
+
+                    {/* Usage */}
+                    <CompactItem value={store.usage.cpu} max={100} label="CPU" featherName="cpu" extra={cpuFreq} />
+                    <CompactItem value={store.usage.gpu} max={100} label="GPU" featherName="image" extra={gpuFreq} />
+                    <CompactItem value={store.usage.ram} max={100} label="RAM" featherName="server" extra={`${store.usageMB.ram} MB`} />
+                    <CompactItem value={store.usage.vram} max={100} label="VRAM" featherName="monitor" extra={`${store.usageMB.vram} MB`} />
+
+                    {/* I/O */}
+                    <CompactItem value={formatBytes(store.io.diskRead)} max={store.GAUGE_LIMITS.io.diskRead.max} label="System Read" featherName="hard-drive" unit="/s" />
+                    <CompactItem value={formatBytes(store.io.diskWrite)} max={store.GAUGE_LIMITS.io.diskWrite.max} label="System Write" featherName="activity" unit="/s" />
+                    <CompactItem
+                        value={formatBytes(store.io.networkRx)}
+                        max={store.GAUGE_LIMITS.io.networkRx.max}
+                        label="Network RX"
+                        featherName="globe"
+                        unit="/s"
+                        extra={formatBytes(store.io.networkPacketsRx, 1, "PPS")}
+                    />
+                    <CompactItem
+                        value={formatBytes(store.io.networkTx)}
+                        max={store.GAUGE_LIMITS.io.networkTx.max}
+                        label="Network TX"
+                        featherName="globe"
+                        unit="/s"
+                        extra={formatBytes(store.io.networkPacketsTx, 1, "PPS")}
+                    />
+                </div>
+                <div className="compact-footer">
+                    {store.SYSTEM_INFO.hostname} · {store.SYSTEM_INFO.cpu} · {store.system?.split('|').join('·')}
+                </div>
+            </div>
+        );
+    }
+
     return (
         <>
+            {!IS_EMBED && <StorageModal />}
             <div
                 className="container"
                 style={{
@@ -1272,7 +1436,7 @@ const Monitor = observer(() => {
                                     ? store.GAUGE_LIMITS.io.backupNetworkRx.max
                                     : store.GAUGE_LIMITS.io.networkRx.max
                             }
-                            label="Internet RX"
+                            label="Network RX"
                             labelExtra={formatBytes(
                                 isUsingBackupNetwork ? store.io.backupNetworkPacketsRx : store.io.networkPacketsRx,
                                 1,
@@ -1290,7 +1454,7 @@ const Monitor = observer(() => {
                                     ? store.GAUGE_LIMITS.io.backupNetworkTx.max
                                     : store.GAUGE_LIMITS.io.networkTx.max
                             }
-                            label="Internet TX"
+                            label="Network TX"
                             labelExtra={formatBytes(
                                 isUsingBackupNetwork ? store.io.backupNetworkPacketsTx : store.io.networkPacketsTx,
                                 1,

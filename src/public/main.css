@@ -1,4 +1,5 @@
-html, body {
+html,
+body {
     background-color: rgb(21, 10, 35);
 }
 
@@ -196,6 +197,93 @@ dotlottie-player {
     --border-radius: 8px;
 }
 
-th, td {
+th,
+td {
     padding-left: 12px !important;
+}
+
+.embed-container {
+    width: 100vw;
+    height: 100vh;
+    padding: 4px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    background-color: rgb(21, 10, 35);
+    overflow: hidden;
+}
+
+.compact-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 4px;
+    flex-grow: 1;
+}
+
+.compact-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+}
+
+.compact-value {
+    font-size: 0.8em;
+    font-weight: bold;
+}
+
+.compact-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    justify-content: center;
+}
+
+.compact-icon {
+    width: 10px !important;
+    height: 10px !important;
+    opacity: 0.8;
+}
+
+.compact-bar-container {
+    flex-grow: 1;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+}
+
+.compact-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s ease;
+    background: linear-gradient(90deg, #70CAD1 0%, #F7EE7F 50%, #A63D40 100%);
+    background-size: var(--bg-size, 100%) 100%;
+    background-repeat: no-repeat;
+    filter: saturate(0.5);
+}
+
+.compact-label {
+    font-size: 0.6em;
+    opacity: 0.5;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+.compact-footer {
+    font-size: 0.65em;
+    opacity: 0.6;
+    text-align: center;
+    padding-top: 4px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    font-family: monospace;
+    white-space: nowrap;
 }
