@@ -1838,7 +1838,7 @@ const Monitor = observer(() => {
                         marginRight: isSmallLandscape ? 80 : undefined
                     }}
                 >
-                    <div className="section-title" style={{ marginTop: 0 }}>Temperature</div>
+                    <div className="section-title" style={{ marginTop: -5 }}>Temperature</div>
                     <div className="gauge-container">
                         <Gauge
                             value={store.temperatures.cpu}
@@ -2058,10 +2058,10 @@ const Monitor = observer(() => {
                 <iframe
                     src={`https://magi-monitor${location.host.includes('-ts') ? '-ts' : ''}.wtako.net/?embed=1`}
                     style={{
-                        width: 'calc(100% + 40px)',
+                        width: 'calc(100% + 20px)',
                         border: 0,
                         height: 200,
-                        marginLeft: -20
+                        marginLeft: -10
                     }}>
                 </iframe>
 
