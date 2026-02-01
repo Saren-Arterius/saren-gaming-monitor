@@ -144,7 +144,8 @@ class Store {
     GAUGE_LIMITS = {
         temperature: {
             cpu: { min: 30, max: 95 },
-            gpu: { min: 30, max: 80 }
+            gpu: { min: 30, max: 80 },
+            nic: { min: 30, max: 100 }
         },
         io: {
             diskRead: { max: 3.75 * 1024 * 1024 * 1024 },
@@ -153,10 +154,6 @@ class Store {
             networkTx: { max: 1.25 * 1024 * 1024 * 1024 },
             backupNetworkRx: { max: 6 * 1024 * 1024 }, // 42Mbps Network
             backupNetworkTx: { max: 1 * 1024 * 1024 }
-        },
-        fanSpeed: {
-            cpu: { max: 2200 },
-            motherboard: { max: 12000 }
         }
     };
 
@@ -170,7 +167,8 @@ class Store {
     storageInfo = {};
     temperatures = {
         cpu: 30,
-        gpu: 50
+        gpu: 50,
+        nic: 30
     };
     usage = {
         cpu: 34,
@@ -201,10 +199,6 @@ class Store {
         backupNetworkTx: 0,
         isUsingBackup: false,
         routeMetrics: {}
-    };
-    fanSpeed = {
-        cpu: 1500,
-        motherboard: 2100
     };
     frequencies = {
         cpu: [0],
@@ -1127,7 +1121,7 @@ const Monitor = observer(() => {
     const isUsingBackupNetwork = store.io.isUsingBackup;
     const systemSSD = store.disks['systemSSD'];
 
-    let useSmall = Object.keys(store.disks).length >= 2;
+    let useSmall = true;
     console.log("render");
 
     return (
@@ -1169,6 +1163,15 @@ const Monitor = observer(() => {
                             className="temperature"
                             featherName="image"
                             gpuPwr
+                        />
+                        <Gauge
+                            small={useSmall}
+                            value={store.temperatures.nic}
+                            min={store.GAUGE_LIMITS.temperature.nic.min}
+                            max={store.GAUGE_LIMITS.temperature.nic.max}
+                            label="NIC"
+                            className="temperature"
+                            featherName="activity"
                         />
                         {Object.values(store.disks).map((disk) => (
                             <Gauge
@@ -1308,30 +1311,11 @@ const Monitor = observer(() => {
                         flexGrow: isSmallLandscape ? 1 : undefined
                     }}
                 >
-                    <div className="section" style={{ flexGrow: 1, minHeight: sectionMinHeight }}>
-                        <div className="section-title">Fan Speed</div>
-                        <div className="gauge-container">
-                            <Gauge
-                                value={store.fanSpeed.cpu}
-                                max={store.GAUGE_LIMITS.fanSpeed.cpu.max}
-                                label="CPU"
-                                className="fan"
-                                featherName="cpu"
-                            />
-                            <Gauge
-                                value={store.fanSpeed.motherboard}
-                                max={store.GAUGE_LIMITS.fanSpeed.motherboard.max}
-                                label="Motherboard"
-                                className="fan"
-                                featherName="server"
-                            />
-                        </div>
-                    </div>
                     <div
                         className="section"
                         style={{
                             display: "flex",
-                            width: isSmallLandscape ? 170 : infoWidth,
+                            flexGrow: 1,
                             minHeight: sectionMinHeight
                         }}
                     >

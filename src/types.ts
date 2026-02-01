@@ -2,8 +2,8 @@ export interface LastStats {
     stat: string[];
     diskstats: string[];
     netdev: string[];
-    ib_rcv: string,
-    ib_xmit: string,
+    ib_rcv: string[];
+    ib_xmit: string[];
     lastUpdate: number;
 }
 
@@ -36,6 +36,7 @@ export interface SystemMetrics {
     temperatures: {
         cpu: number;
         gpu?: number;
+        nic?: number;
     };
     usage: {
         cpu?: number;
@@ -64,7 +65,7 @@ export interface SystemMetrics {
         isUsingBackup: boolean;
         routeMetrics: { [key: string]: number };
     };
-    fanSpeed: {
+    fanSpeed?: {
         cpu: number;
         motherboard: number;
         ssd: number;

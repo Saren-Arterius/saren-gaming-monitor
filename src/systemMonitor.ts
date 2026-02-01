@@ -81,48 +81,73 @@ export class SystemMonitor {
 
         const commands = [
             `${CONFIG.commands.nvidia.command} ${CONFIG.commands.nvidia.params} ${CONFIG.commands.nvidia.format}`,
+            (CONFIG.commands as any).vram.command,
             ...dfCommands,
             "ss -tuna state established | grep -v '127.0.0.1' | grep -v '::1' | wc -l",
             "ip route | grep metric | grep default"
         ];
 
         const sensorPromise = execAsync(CONFIG.commands.sensors.command);
+        const cpupowerPromise = execAsync(CONFIG.commands.cpupower.command);
         const commandPromises = commands.map(cmd => execAsync(cmd));
-        const filePromises = Object.values(files).map(f => Bun.file(f).text());
 
-        const [sensorResult, ...rest] = await Promise.all([
+        // Handle potential arrays in systemFiles
+        const fileEntries = Object.entries(files);
+        const filePromises: Promise<string | string[]>[] = fileEntries.map(async ([key, value]) => {
+            if (Array.isArray(value)) {
+                return Promise.all(value.map(f => Bun.file(f).text()));
+            }
+            return Bun.file(value).text();
+        });
+
+        const [sensorResult, cpupowerResult, ...rest] = await Promise.all([
             sensorPromise,
+            cpupowerPromise,
             ...commandPromises,
             ...filePromises
         ]);
 
         const commandResults = rest.slice(0, commands.length) as { stdout: string, stderr: string }[];
-        const fileResults = rest.slice(commands.length) as string[];
+        const fileResults = rest.slice(commands.length) as (string | string[])[];
 
         const gpuResult = commandResults[0];
-        const dfResults = commandResults.slice(1, 1 + dfCommands.length).map(r => r.stdout.trim().split(/\s+/));
-        const otherCommandResults = commandResults.slice(1 + dfCommands.length);
+        const vramResult = commandResults[1];
+        const dfResults = commandResults.slice(2, 2 + dfCommands.length).map(r => r.stdout.trim().split(/\s+/));
+        const otherCommandResults = commandResults.slice(2 + dfCommands.length);
 
         const storageStats: { [key: string]: string[] } = {};
         disks.forEach((disk, index) => {
             storageStats[disk.label] = dfResults[index];
         });
 
+        const fileData: { [key: string]: any } = {};
+        fileEntries.forEach(([key], index) => {
+            fileData[key] = fileResults[index];
+        });
+
+        const vramUsed = vramResult.stdout
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line && !isNaN(parseInt(line)))
+            .reduce((acc, val) => acc + parseInt(val), 0);
+
         return {
             gpu: gpuResult.stdout.split(',').map(str => str.trim()),
+            vramUsed,
             sensors: JSON.parse(sensorResult.stdout),
+            cpupower: cpupowerResult.stdout,
             storageStats,
             activeConn: otherCommandResults[0].stdout.trim(),
             ipRoute: otherCommandResults[1].stdout.trim(),
-            stat: fileResults[0].split('\n'),
-            meminfo: fileResults[1].split('\n'),
-            diskstats: fileResults[2].split('\n'),
-            netdev: fileResults[3].split('\n').map(l => l.trim()),
-            cpuinfo: fileResults[4].split('\n'),
-            ib_rcv: fileResults[5].trim(),
-            ib_xmit: fileResults[6].trim(),
-            uptime: fileResults[7].trim(),
-            loadavg: fileResults[8].trim()
+            stat: (fileData.stat as string).split('\n'),
+            meminfo: (fileData.meminfo as string).split('\n'),
+            diskstats: (fileData.diskstats as string).split('\n'),
+            netdev: (fileData.netdev as string).split('\n').map(l => l.trim()),
+            cpuinfo: (fileData.cpuinfo as string).split('\n'),
+            ib_rcv: Array.isArray(fileData.ib_rcv) ? fileData.ib_rcv.map((s: string) => s.trim()) : [fileData.ib_rcv.trim()],
+            ib_xmit: Array.isArray(fileData.ib_xmit) ? fileData.ib_xmit.map((s: string) => s.trim()) : [fileData.ib_xmit.trim()],
+            uptime: (fileData.uptime as string).trim(),
+            loadavg: (fileData.loadavg as string).trim()
         };
     }
 
@@ -146,6 +171,24 @@ export class SystemMonitor {
         let memUsage = memUsed / total;
 
         let cpuMhzs = data.cpuinfo.filter((l: string) => l.startsWith('cpu MHz')).map((s: string) => parseFloat(s.split(':')[1]));
+
+        if (cpuMhzs.length === 0 && data.cpupower) {
+            // Fallback to cpupower frequency-info hardware limits
+            // Example: "hardware limits: 338 MHz - 2.81 GHz"
+            const matches = [...data.cpupower.matchAll(/hardware limits:\s+([\d.]+)\s+(GHz|MHz)\s+-\s+([\d.]+)\s+(GHz|MHz)/g)];
+            if (matches.length > 0) {
+                cpuMhzs = [];
+                matches.forEach(match => {
+                    let minFreq = parseFloat(match[1]);
+                    if (match[2] === 'GHz') minFreq *= 1000;
+                    
+                    let maxFreq = parseFloat(match[3]);
+                    if (match[4] === 'GHz') maxFreq *= 1000;
+                    
+                    cpuMhzs.push(minFreq, maxFreq);
+                });
+            }
+        }
 
         const formattedUptime = this.formatUptime(parseFloat(data.uptime));
         const loadavg = data.loadavg
@@ -230,16 +273,17 @@ export class SystemMonitor {
             temperatures: {
                 cpu: Math.round(parseFloat(data.sensors[CONFIG.sensors.cpu.temperature][CONFIG.sensors.cpu.tempField][CONFIG.sensors.cpu.tempInput])),
                 gpu: parseFloat(data.gpu[1]),
+                nic: Math.round(parseFloat(data.sensors[CONFIG.sensors.nic.temperature][CONFIG.sensors.nic.tempField][CONFIG.sensors.nic.tempInput])),
             },
             usage: {
                 cpu: 0,
                 gpu: parseInt(data.gpu[2]),
                 ram: Math.round(memUsage * 100),
-                vram: Math.round(parseInt(data.gpu[3]) / parseInt(data.gpu[4]) * 100)
+                vram: Math.round((data.vramUsed / total) * 100)
             },
             usageMB: {
                 ram: Math.round(memUsed),
-                vram: parseInt(data.gpu[3])
+                vram: data.vramUsed
             },
             io: {
                 diskRead: totalDiskRead,
@@ -258,18 +302,13 @@ export class SystemMonitor {
                 isUsingBackup: false,
                 routeMetrics: {},
             },
-            fanSpeed: {
-                cpu: !CONFIG.sensors.fans.cpu ? 0 : parseInt(data.sensors[(CONFIG.sensors.fans.cpu as any).controller][(CONFIG.sensors.fans.cpu as any).id][(CONFIG.sensors.fans.cpu as any).input]),
-                motherboard: !CONFIG.sensors.fans.motherboard ? 0 : parseInt(data.sensors[(CONFIG.sensors.fans.motherboard as any).controller][(CONFIG.sensors.fans.motherboard as any).id][(CONFIG.sensors.fans.motherboard as any).input]),
-                ssd: !CONFIG.sensors.fans.systemSSD ? 0 : parseInt(data.sensors[(CONFIG.sensors.fans.systemSSD as any).controller][(CONFIG.sensors.fans.systemSSD as any).id][(CONFIG.sensors.fans.systemSSD as any).input])
-            },
             disks: disksMetrics,
             frequencies: {
                 cpu: cpuMhzs,
-                gpuCore: parseInt(data.gpu[5]),
+                gpuCore: parseInt(data.gpu[3]),
             },
             pwr: {
-                gpu: parseFloat(data.gpu[6]),
+                gpu: parseFloat(data.gpu[4]),
             },
             system,
             uptime: parseFloat(data.uptime),
@@ -291,8 +330,6 @@ export class SystemMonitor {
 
             result.usage.cpu = Math.round((1 - idleDiff / totalDiff) * 100);
 
-            const networkStats = data.netdev.find((line: string) => line.startsWith(`${CONFIG.network.interface}:`));
-
             const routeMetrics: { [key: string]: number } = {};
             data.ipRoute.split('\n').reverse().forEach((line: string) => {
                 const match = line.match(/dev\s+(\S+).*metric\s+(\d+)/);
@@ -301,49 +338,75 @@ export class SystemMonitor {
                 }
             });
 
-            const isUsingBackup = routeMetrics[CONFIG.network.backupInterface] < 1000;
-            result.io.isUsingBackup = isUsingBackup;
             result.io.routeMetrics = routeMetrics;
+            result.io.isUsingBackup = false; // Default to false as backupInterface was removed
 
-            const prevNetworkStats = this.lastStats.netdev.find((line: string) => line.startsWith(`${CONFIG.network.interface}:`));
+            let totalRx = 0;
+            let totalTx = 0;
+            let totalPacketsRx = 0;
+            let totalPacketsTx = 0;
+            let currentRxTotal = 0;
+            let currentTxTotal = 0;
 
-            if (networkStats && prevNetworkStats) {
-                const [, rxBytes, rxPackets, , , , , , , txBytes, txPackets] = networkStats.split(/\s+/);
-                const [, prevRxBytes, prevRxPackets, , , , , , , prevTxBytes, prevTxPackets] = prevNetworkStats.split(/\s+/);
+            for (const iface of CONFIG.network.interfaces) {
+                const networkStats = data.netdev.find((line: string) => line.startsWith(`${iface}:`));
+                const prevNetworkStats = this.lastStats.netdev.find((line: string) => line.startsWith(`${iface}:`));
 
-                let ibRx = Math.round(((parseInt(data.ib_rcv) * 4) - (parseInt(this.lastStats.ib_rcv) * 4)) / timeDiff);
-                let ibTx = Math.round(((parseInt(data.ib_xmit) * 4) - (parseInt(this.lastStats.ib_xmit) * 4)) / timeDiff);
+                if (networkStats && prevNetworkStats) {
+                    const parts = networkStats.split(/\s+/);
+                    const prevParts = prevNetworkStats.split(/\s+/);
+                    
+                    // /proc/net/dev format:
+                    // face |rx_bytes rx_packets rx_errs rx_drop rx_fifo rx_frame rx_compressed rx_multicast|tx_bytes tx_packets tx_errs tx_drop tx_fifo tx_colls tx_carrier tx_compressed
+                    // parts[0] is "face:", parts[1] is rx_bytes, parts[2] is rx_packets, parts[9] is tx_bytes, parts[10] is tx_packets
+                    const rxBytes = parseInt(parts[1]);
+                    const rxPackets = parseInt(parts[2]);
+                    const txBytes = parseInt(parts[9]);
+                    const txPackets = parseInt(parts[10]);
 
-                result.io.networkRx = Math.round((parseInt(rxBytes) - parseInt(prevRxBytes)) / timeDiff) + ibRx;
-                result.io.networkTx = Math.round((parseInt(txBytes) - parseInt(prevTxBytes)) / timeDiff) + ibTx;
+                    const prevRxBytes = parseInt(prevParts[1]);
+                    const prevRxPackets = parseInt(prevParts[2]);
+                    const prevTxBytes = parseInt(prevParts[9]);
+                    const prevTxPackets = parseInt(prevParts[10]);
 
-                result.io.networkPacketsRx = Math.round((parseInt(rxPackets) - parseInt(prevRxPackets)) / timeDiff);
-                result.io.networkPacketsTx = Math.round((parseInt(txPackets) - parseInt(prevTxPackets)) / timeDiff);
+                    totalRx += Math.round((rxBytes - prevRxBytes) / timeDiff);
+                    totalTx += Math.round((txBytes - prevTxBytes) / timeDiff);
+                    totalPacketsRx += Math.round((rxPackets - prevRxPackets) / timeDiff);
+                    totalPacketsTx += Math.round((txPackets - prevTxPackets) / timeDiff);
 
-
-                // Prevent interface restart surprises
-                if (parseInt(rxBytes) > this.saneInfo.networkRxTotal) {
-                    this.saneInfo.networkRxTotal = parseInt(rxBytes);
+                    currentRxTotal += rxBytes;
+                    currentTxTotal += txBytes;
                 }
-                if (parseInt(txBytes) > this.saneInfo.networkTxTotal) {
-                    this.saneInfo.networkTxTotal = parseInt(txBytes);
-                }
-                result.io.networkRxTotal = this.saneInfo.networkRxTotal;
-                result.io.networkTxTotal = this.saneInfo.networkTxTotal;
             }
 
-            const backupNetworkStats = data.netdev.find((line: string) => line.startsWith(`${CONFIG.network.backupInterface}:`));
-            const backupPrevNetworkStats = this.lastStats.netdev.find((line: string) => line.startsWith(`${CONFIG.network.backupInterface}:`));
-            if (backupNetworkStats && backupPrevNetworkStats) {
-                const [, rxBytes, rxPackets, , , , , , txBytes, txPackets] = backupNetworkStats.split(/\s+/);
-                const [, prevRxBytes, prevRxPackets, , , , , , prevTxBytes, prevTxPackets] = backupPrevNetworkStats.split(/\s+/);
+            let ibRx = 0;
+            let ibTx = 0;
 
-                result.io.backupNetworkRx = Math.round((parseInt(rxBytes) - parseInt(prevRxBytes)) / timeDiff);
-                result.io.backupNetworkTx = Math.round((parseInt(txBytes) - parseInt(prevTxBytes)) / timeDiff);
-
-                result.io.backupNetworkPacketsRx = Math.round((parseInt(rxPackets) - parseInt(prevRxPackets)) / timeDiff);
-                result.io.backupNetworkPacketsTx = Math.round((parseInt(txPackets) - parseInt(prevTxPackets)) / timeDiff);
+            for (let i = 0; i < data.ib_rcv.length; i++) {
+                if (this.lastStats.ib_rcv[i]) {
+                    ibRx += Math.round(((parseInt(data.ib_rcv[i]) * 4) - (parseInt(this.lastStats.ib_rcv[i]) * 4)) / timeDiff);
+                }
             }
+            for (let i = 0; i < data.ib_xmit.length; i++) {
+                if (this.lastStats.ib_xmit[i]) {
+                    ibTx += Math.round(((parseInt(data.ib_xmit[i]) * 4) - (parseInt(this.lastStats.ib_xmit[i]) * 4)) / timeDiff);
+                }
+            }
+
+            result.io.networkRx = totalRx + ibRx;
+            result.io.networkTx = totalTx + ibTx;
+            result.io.networkPacketsRx = totalPacketsRx;
+            result.io.networkPacketsTx = totalPacketsTx;
+
+            // Prevent interface restart surprises
+            if (currentRxTotal > this.saneInfo.networkRxTotal) {
+                this.saneInfo.networkRxTotal = currentRxTotal;
+            }
+            if (currentTxTotal > this.saneInfo.networkTxTotal) {
+                this.saneInfo.networkTxTotal = currentTxTotal;
+            }
+            result.io.networkRxTotal = this.saneInfo.networkRxTotal;
+            result.io.networkTxTotal = this.saneInfo.networkTxTotal;
         }
 
         this.lastStats = {

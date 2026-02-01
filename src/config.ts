@@ -5,73 +5,71 @@ export const CONFIG = {
         SYSTEM_INFO: {
             hostname: execSync("hostname").toString().trim(),
             os: execSync('cat /etc/os-release | grep PRETTY_NAME | cut -d\\" -f2').toString().trim(),
-            cpu: 'AMD Ryzen 7 9800X3D',
-            gpu: 'NVIDIA GeForce RTX 4090',
-            case: 'Lian Li A4-H2O',
+            cpu: 'NVIDIA GB10',
+            gpu: '',
+            case: 'MSI EdgeXpert MS-C931',
         },
 
         GAUGE_LIMITS: {
             temperature: {
                 cpu: { min: 30, max: 95 },
-                gpu: { min: 30, max: 80 },
-                ssd: { min: 30, max: 70 }
+                gpu: { min: 30, max: 95 },
+                ssd: { min: 30, max: 70 },
+                nic: { min: 30, max: 105 }
             },
             io: {
-                diskRead: { max: 3.75 * 1024 * 1024 * 1024 }, // PCIE 3.0 NVME SSD
-                diskWrite: { max: 3.75 * 1024 * 1024 * 1024 },
-                networkRx: { max: 3 * 1024 * 1024 * 1024 }, // 40Gbps Network - overhead
-                networkTx: { max: 3 * 1024 * 1024 * 1024 },
-                backupNetworkRx: { max: 6 * 1024 * 1024 }, // 42Mbps Network
-                backupNetworkTx: { max: 1 * 1024 * 1024 }
+                diskRead: { max: 7.5 * 1024 * 1024 * 1024 }, // PCIE 4.0 NVME SSD
+                diskWrite: { max: 7.5 * 1024 * 1024 * 1024 },
+                networkRx: { max: 12.5 * 1024 * 1024 * 1024 },
+                networkTx: { max: 12.5 * 1024 * 1024 * 1024 },
             },
-            fanSpeed: {
-                cpu: { max: 2500 },
-                motherboard: { max: 12000 }
-            }
         },
-
-        MH_FAN: false
     },
     // lm_sensors json output, See `sensors -j`
     sensors: {
         cpu: {
-            temperature: 'k10temp-pci-00c3',
-            tempField: 'Tctl',
+            temperature: 'acpitz-acpi-0',
+            tempField: 'temp1',
+            tempInput: 'temp1_input'
+        },
+        nic: {
+            temperature: 'mlx5-pci-0101',
+            tempField: 'asic',
             tempInput: 'temp1_input'
         },
         fans: {
-            motherboard: {
-                controller: 'nct6687-isa-0a20',
-                id: 'fan4',
-                input: 'fan4_input'
-            },
-            cpu: {
-                controller: 'nct6687-isa-0a20',
-                id: 'fan1',
-                input: 'fan1_input'
-            },
-            systemSSD: null
+            
         }
     },
     network: {
-        interface: 'enp5s0np0',
-        backupInterface: 'enp0s20f0u4',
+        interfaces: [
+            'enp1s0f0np0',
+            'enP7s7',
+            'enp1s0f1np1',
+            'enP2p1s0f0np0',
+            'enP2p1s0f1np1',
+            'wlP9s9'
+        ],
     },
     server: {
         port: 3000,
         corsOrigin: "*",
         corsMethods: ["GET", "POST"]
     },
-
-
     commands: {
         nvidia: {
             command: 'nvidia-smi',
-            params: '--query-gpu=name,temperature.gpu,utilization.gpu,memory.used,memory.total,clocks.current.graphics,power.draw',
+            params: '--query-gpu=name,temperature.gpu,utilization.gpu,clocks.current.graphics,power.draw',
             format: '--format=csv,noheader'
+        },
+        vram: {
+            command: 'nvidia-smi --query-compute-apps used_memory --format=csv,noheader,nounits'
         },
         sensors: {
             command: 'sensors -j'
+        },
+        cpupower: {
+            command: 'cpupower frequency-info'
         }
     },
     systemFiles: {
@@ -80,8 +78,18 @@ export const CONFIG = {
         diskstats: '/proc/diskstats',
         netdev: '/proc/net/dev',
         cpuinfo: '/proc/cpuinfo',
-        ib_rcv: '/sys/devices/pci0000:00/0000:00:02.1/0000:03:00.0/0000:04:00.0/0000:05:00.0/infiniband/rocep5s0/ports/1/counters/port_rcv_data',
-        ib_xmit: '/sys/devices/pci0000:00/0000:00:02.1/0000:03:00.0/0000:04:00.0/0000:05:00.0/infiniband/rocep5s0/ports/1/counters/port_xmit_data',
+        ib_rcv: [
+            '/sys/devices/pci0000:00/0000:00:00.0/0000:01:00.0/infiniband/rocep1s0f0/ports/1/counters/port_rcv_data',
+            '/sys/devices/pci0000:00/0000:00:00.0/0000:01:00.1/infiniband/rocep1s0f1/ports/1/counters/port_rcv_data',
+            '/sys/devices/pci0002:00/0002:00:00.0/0002:01:00.0/infiniband/roceP2p1s0f0/ports/1/counters/port_rcv_data',
+            '/sys/devices/pci0002:00/0002:00:00.0/0002:01:00.1/infiniband/roceP2p1s0f1/ports/1/counters/port_rcv_data'
+        ],
+        ib_xmit: [
+            '/sys/devices/pci0000:00/0000:00:00.0/0000:01:00.0/infiniband/rocep1s0f0/ports/1/counters/port_xmit_data',
+            '/sys/devices/pci0000:00/0000:00:00.0/0000:01:00.1/infiniband/rocep1s0f1/ports/1/counters/port_xmit_data',
+            '/sys/devices/pci0002:00/0002:00:00.0/0002:01:00.0/infiniband/roceP2p1s0f0/ports/1/counters/port_xmit_data',
+            '/sys/devices/pci0002:00/0002:00:00.0/0002:01:00.1/infiniband/roceP2p1s0f1/ports/1/counters/port_xmit_data'
+        ],
         uptime: '/proc/uptime',
         loadavg: '/proc/loadavg'
     },
@@ -89,26 +97,16 @@ export const CONFIG = {
         systemSSD: {
             label: 'systemSSD',
             name: 'System',
-            "device": "/dev/disk/by-id/nvme-SAMSUNG_MZVLB1T0HALR-00000_S3W6NY0M708431_1",
+            "device": "/dev/disk/by-id/nvme-ESL01TBTLCZ-27J2-TYN_5P1250703005000105_1",
             "mountPoint": "/",
             "tempLimit": {
                 "min": 30,
                 "max": 70
             },
             "sensor": {
-                "temperature": "nvme-pci-0200",
+                "temperature": "nvme-pci-40100",
                 "tempField": "Composite",
                 "tempInput": "temp1_input"
-            }
-        },
-        backupHDD: {
-            label: 'backupHDD',
-            name: 'Backup',
-            "device": "/dev/disk/by-id/ata-WDC_WUH722222ALE6L4_1PG886YV",
-            "mountPoint": "/mnt/backup",
-            "tempLimit": {
-                "min": 30,
-                "max": 60
             }
         }
     }
