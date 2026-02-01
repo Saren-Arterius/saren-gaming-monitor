@@ -26,8 +26,8 @@ body {
 .section-title {
     font-weight: 500;
     font-size: 1.2em;
-    margin-top: 10px;
-    margin-bottom: 10px;
+    /* margin-top: -20px; */
+    margin-bottom: 5px;
     color: #fff;
     opacity: 0.9;
 }
@@ -193,10 +193,11 @@ dotlottie-player {
     --border-radius: 8px;
 }
 
-tbody > tr {
+tbody>tr {
     /* background-color: rgb(26, 26, 26) */
 }
 
-th, td {
+th,
+td {
     padding-left: 12px !important;
 }

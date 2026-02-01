@@ -1608,8 +1608,8 @@ const NetworkBars = observer(({ isSmallLandscape }) => {
         <div
             style={{
                 width: "100%",
-                paddingTop: isSmallLandscape ? 8 : 16,
-                paddingBottom: 16,
+                paddingTop: isSmallLandscape ? 8 : 8,
+                paddingBottom: -4,
                 cursor: "pointer",
                 transition: "transform 0.2s ease-in-out, filter 0.2s ease-in-out"
             }}
@@ -1838,7 +1838,7 @@ const Monitor = observer(() => {
                         marginRight: isSmallLandscape ? 80 : undefined
                     }}
                 >
-                    <div className="section-title">Temperature</div>
+                    <div className="section-title" style={{ marginTop: 0 }}>Temperature</div>
                     <div className="gauge-container">
                         <Gauge
                             value={store.temperatures.cpu}
@@ -1881,7 +1881,7 @@ const Monitor = observer(() => {
                         width: isSmallLandscape ? "calc(50% - 40px)" : undefined
                     }}
                 >
-                    <div className="section-title">Usage</div>
+                    <div className="section-title" style={{ marginTop: -25 }}>Usage</div>
                     <div className="gauge-container" style={{ marginTop: isSmallLandscape ? 25 : undefined }}>
                         <Gauge
                             value={store.usage.cpu}
@@ -1928,7 +1928,7 @@ const Monitor = observer(() => {
                         marginTop: isSmallLandscape ? 10 : undefined
                     }}
                 >
-                    <div className="section-title">I/O</div>
+                    <div className="section-title" style={{ marginTop: -10 }}>I/O</div>
                     <div className="gauge-container" style={{ marginTop: isSmallLandscape ? 20 : undefined }}>
                         <Gauge
                             value={store.io.diskRead}
@@ -1992,7 +1992,7 @@ const Monitor = observer(() => {
                         flexGrow: isSmallLandscape ? 1 : undefined
                     }}
                 >
-                    <div className="section" style={{ flexGrow: 1, minHeight: sectionMinHeight }}>
+                    <div className="section" style={{ flexGrow: 1, minHeight: sectionMinHeight - 20 }}>
                         <div className="section-title">Fan Speed</div>
                         <div className="gauge-container">
                             <Gauge
@@ -2015,8 +2015,8 @@ const Monitor = observer(() => {
                         className="section"
                         style={{
                             display: "flex",
-                            width: isSmallLandscape ? 170 : infoWidth,
-                            minHeight: sectionMinHeight
+                            width: (isSmallLandscape ? 170 : infoWidth) + 10,
+                            minHeight: sectionMinHeight - 20
                         }}
                     >
                         <div className="section-title">&nbsp;</div>
@@ -2055,7 +2055,18 @@ const Monitor = observer(() => {
                     </div>
                 </div>
                 <NetworkBars isSmallLandscape={isSmallLandscape} />
+                <iframe
+                    src={`https://magi-monitor${location.host.includes('-ts') ? '-ts' : ''}.wtako.net/?embed=1`}
+                    style={{
+                        width: '100vw',
+                        border: 0,
+                        height: 200,
+                        marginLeft: -20
+                    }}>
+                </iframe>
+
             </div>
+
 
             {!shouldPowerSave() && (
                 <>
