@@ -20,6 +20,7 @@ export class InternetMonitor extends NetworkMonitor<Server, ServerMonitorData> {
         { id: 'steam', hostname: 'Steam', address: 'store.steampowered.com' },
         { id: 'github', hostname: 'GitHub', address: 'github.com' },
         { id: 'bilibili', hostname: 'Bilibili', address: 'bilibili.com' },
+        { id: 'mgs', hostname: 'Midgardsormr', address: '100.64.0.102' },
     ];
 
     protected getTargets(): Server[] {
