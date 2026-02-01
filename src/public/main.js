@@ -155,7 +155,8 @@ class Store {
     GAUGE_LIMITS = {
         temperature: {
             cpu: { min: 30, max: 95 },
-            gpu: { min: 30, max: 80 }
+            gpu: { min: 30, max: 80 },
+            cx5: { min: 30, max: 105 }
         },
         io: {
             diskRead: { max: 3.75 * 1024 * 1024 * 1024 },
@@ -180,7 +181,8 @@ class Store {
     storageInfo = {};
     temperatures = {
         cpu: 30,
-        gpu: 50
+        gpu: 50,
+        cx5: 30
     };
     usage = {
         cpu: 34,
@@ -1845,7 +1847,19 @@ const Monitor = observer(() => {
                             label="CPU"
                             className="temperature"
                             featherName="cpu"
+                            small
                         />
+                        {store.temperatures.cx5 !== undefined && (
+                            <Gauge
+                                value={store.temperatures.cx5}
+                                min={store.GAUGE_LIMITS.temperature.cx5.min}
+                                max={store.GAUGE_LIMITS.temperature.cx5.max}
+                                label="CX5"
+                                className="temperature"
+                                featherName="activity"
+                                small
+                            />
+                        )}
                         {Object.values(store.disks).map((disk) => (
                             <Gauge
                                 key={disk.label}
@@ -1855,6 +1869,7 @@ const Monitor = observer(() => {
                                 label={`SSD (${disk.name})`}
                                 className="temperature"
                                 featherName="hard-drive"
+                                small
                             />
                         ))}
                     </div >

@@ -12,6 +12,7 @@ export const CONFIG = {
         GAUGE_LIMITS: {
             temperature: {
                 cpu: { min: 30, max: 90 },
+                cx5: { min: 30, max: 105 },
             },
             io: {
                 diskRead: { max: 5000 * 1024 * 1024 }, // PCIE 3.0 + PCIE 4.0 NVME SSD
@@ -60,6 +61,9 @@ export const CONFIG = {
     commands: {
         sensors: {
             command: 'sensors -j'
+        },
+        cx5Temp: {
+            command: 'sudo mstmget_temp -d 01:00.0'
         }
     },
     systemFiles: {

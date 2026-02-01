@@ -112,11 +112,13 @@ export class SystemMonitor {
         ];
 
         const sensorPromise = execAsync(CONFIG.commands.sensors.command);
+        const cx5TempPromise = execAsync(CONFIG.commands.cx5Temp.command);
         const commandPromises = commands.map(cmd => execAsync(cmd));
         const filePromises = Object.values(files).map(f => Bun.file(f).text());
 
-        const [sensorResult, ...rest] = await Promise.all([
+        const [sensorResult, cx5TempResult, ...rest] = await Promise.all([
             sensorPromise,
+            cx5TempPromise,
             ...commandPromises,
             ...filePromises
         ]);
@@ -134,6 +136,7 @@ export class SystemMonitor {
 
         return {
             sensors: JSON.parse(sensorResult.stdout),
+            cx5Temp: cx5TempResult.stdout.trim(),
             storageStats,
             activeConn: otherCommandResults[0].stdout.trim(),
             ipRoute: otherCommandResults[1].stdout.trim(),
@@ -248,6 +251,7 @@ export class SystemMonitor {
             temperatures: {
                 cpu: Math.round(parseFloat(data.sensors[CONFIG.sensors.cpu.temperature][CONFIG.sensors.cpu.tempField][CONFIG.sensors.cpu.tempInput])),
                 gpu: undefined,
+                cx5: parseFloat(data.cx5Temp) || undefined,
             },
             usage: {
                 cpu: 0,

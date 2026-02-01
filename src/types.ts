@@ -34,6 +34,7 @@ export interface SystemMetrics {
     temperatures: {
         cpu: number;
         gpu?: number;
+        cx5?: number;
     };
     usage: {
         cpu: number;
