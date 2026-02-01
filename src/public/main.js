@@ -145,7 +145,7 @@ class Store {
         temperature: {
             cpu: { min: 30, max: 95 },
             gpu: { min: 30, max: 80 },
-            nic: { min: 30, max: 100 }
+            cx7: { min: 30, max: 100 }
         },
         io: {
             diskRead: { max: 3.75 * 1024 * 1024 * 1024 },
@@ -168,7 +168,7 @@ class Store {
     temperatures = {
         cpu: 30,
         gpu: 50,
-        nic: 30
+        cx7: 30
     };
     usage = {
         cpu: 34,
@@ -1166,12 +1166,12 @@ const Monitor = observer(() => {
                         />
                         <Gauge
                             small={useSmall}
-                            value={store.temperatures.nic}
-                            min={store.GAUGE_LIMITS.temperature.nic.min}
-                            max={store.GAUGE_LIMITS.temperature.nic.max}
-                            label="NIC"
+                            value={store.temperatures.cx7}
+                            min={store.GAUGE_LIMITS.temperature.cx7.min}
+                            max={store.GAUGE_LIMITS.temperature.cx7.max}
+                            label="CX7"
                             className="temperature"
-                            featherName="activity"
+                            featherName="globe"
                         />
                         {Object.values(store.disks).map((disk) => (
                             <Gauge

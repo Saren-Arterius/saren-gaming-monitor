@@ -181,10 +181,10 @@ export class SystemMonitor {
                 matches.forEach(match => {
                     let minFreq = parseFloat(match[1]);
                     if (match[2] === 'GHz') minFreq *= 1000;
-                    
+
                     let maxFreq = parseFloat(match[3]);
                     if (match[4] === 'GHz') maxFreq *= 1000;
-                    
+
                     cpuMhzs.push(minFreq, maxFreq);
                 });
             }
@@ -273,7 +273,7 @@ export class SystemMonitor {
             temperatures: {
                 cpu: Math.round(parseFloat(data.sensors[CONFIG.sensors.cpu.temperature][CONFIG.sensors.cpu.tempField][CONFIG.sensors.cpu.tempInput])),
                 gpu: parseFloat(data.gpu[1]),
-                nic: Math.round(parseFloat(data.sensors[CONFIG.sensors.nic.temperature][CONFIG.sensors.nic.tempField][CONFIG.sensors.nic.tempInput])),
+                cx7: Math.round(parseFloat(data.sensors[CONFIG.sensors.cx7.temperature][CONFIG.sensors.cx7.tempField][CONFIG.sensors.cx7.tempInput])),
             },
             usage: {
                 cpu: 0,
@@ -355,7 +355,7 @@ export class SystemMonitor {
                 if (networkStats && prevNetworkStats) {
                     const parts = networkStats.split(/\s+/);
                     const prevParts = prevNetworkStats.split(/\s+/);
-                    
+
                     // /proc/net/dev format:
                     // face |rx_bytes rx_packets rx_errs rx_drop rx_fifo rx_frame rx_compressed rx_multicast|tx_bytes tx_packets tx_errs tx_drop tx_fifo tx_colls tx_carrier tx_compressed
                     // parts[0] is "face:", parts[1] is rx_bytes, parts[2] is rx_packets, parts[9] is tx_bytes, parts[10] is tx_packets

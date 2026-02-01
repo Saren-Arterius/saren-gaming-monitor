@@ -15,7 +15,7 @@ export const CONFIG = {
                 cpu: { min: 30, max: 95 },
                 gpu: { min: 30, max: 95 },
                 ssd: { min: 30, max: 70 },
-                nic: { min: 30, max: 105 }
+                cx7: { min: 30, max: 105 }
             },
             io: {
                 diskRead: { max: 7.5 * 1024 * 1024 * 1024 }, // PCIE 4.0 NVME SSD
@@ -32,13 +32,13 @@ export const CONFIG = {
             tempField: 'temp1',
             tempInput: 'temp1_input'
         },
-        nic: {
+        cx7: {
             temperature: 'mlx5-pci-0101',
             tempField: 'asic',
             tempInput: 'temp1_input'
         },
         fans: {
-            
+
         }
     },
     network: {
