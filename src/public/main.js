@@ -1838,7 +1838,7 @@ const Monitor = observer(() => {
                         marginRight: isSmallLandscape ? 80 : undefined
                     }}
                 >
-                    <div className="section-title" style={{ marginTop: -5 }}>Temperature</div>
+                    <div className="section-title" style={{ marginTop: isSmallScreen ? -5 : null }}>Temperature</div>
                     <div className="gauge-container">
                         <Gauge
                             value={store.temperatures.cpu}
@@ -1881,7 +1881,7 @@ const Monitor = observer(() => {
                         width: isSmallLandscape ? "calc(50% - 40px)" : undefined
                     }}
                 >
-                    <div className="section-title" style={{ marginTop: -25 }}>Usage</div>
+                    <div className="section-title" style={{ marginTop: isSmallScreen ? -25 : null }}>Usage</div>
                     <div className="gauge-container" style={{ marginTop: isSmallLandscape ? 25 : undefined }}>
                         <Gauge
                             value={store.usage.cpu}
@@ -1928,7 +1928,7 @@ const Monitor = observer(() => {
                         marginTop: isSmallLandscape ? 10 : undefined
                     }}
                 >
-                    <div className="section-title" style={{ marginTop: -10 }}>I/O</div>
+                    <div className="section-title" style={{ marginTop: isSmallScreen ? -10 : null }}>I/O</div>
                     <div className="gauge-container" style={{ marginTop: isSmallLandscape ? 20 : undefined }}>
                         <Gauge
                             value={store.io.diskRead}
@@ -2060,7 +2060,7 @@ const Monitor = observer(() => {
                     style={{
                         width: 'calc(100% + 20px)',
                         border: 0,
-                        height: 200,
+                        height: 196,
                         marginLeft: -10
                     }}>
                 </iframe>
