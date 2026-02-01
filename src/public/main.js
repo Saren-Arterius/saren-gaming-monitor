@@ -1282,7 +1282,15 @@ const Monitor = observer(() => {
                     />
                 </div>
                 <div className="compact-footer">
-                    {store.SYSTEM_INFO.hostname} · {store.SYSTEM_INFO.cpu} · {store.system?.split('|').join('·')}
+                    <span
+                        style={{
+                            fontFamily: 'var(--font-family)',
+                            fontWeight: 900,
+                            color: COLOR_STOPS[loadLevel].color
+                        }}
+                    >
+                        {store.SYSTEM_INFO.hostname}
+                    </span> · {store.SYSTEM_INFO.cpu} · {store.system?.split('|').join('·')}
                 </div>
             </div>
         );
