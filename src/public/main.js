@@ -2058,7 +2058,7 @@ const Monitor = observer(() => {
                 <iframe
                     src={`https://magi-monitor${location.host.includes('-ts') ? '-ts' : ''}.wtako.net/?embed=1`}
                     style={{
-                        width: '100vw',
+                        width: 'calc(100% + 40px)',
                         border: 0,
                         height: 200,
                         marginLeft: -20
