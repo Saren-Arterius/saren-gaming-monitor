@@ -3,6 +3,10 @@ body {
     background-color: rgb(21, 10, 35);
 }
 
+body.is-embed {
+    background-color: #000000;
+}
+
 body {
     justify-content: center;
     align-items: center;
@@ -78,6 +82,9 @@ body {
     z-index: 2;
 }
 
+body.is-embed .gauge-cover {
+    background: #000000;
+}
 
 .gauge-cover-2 {
     width: 105%;
@@ -94,6 +101,10 @@ body {
     background: conic-gradient(transparent 0deg, transparent var(--a), rgb(21, 10, 35) calc(var(--a) + 0.2%));
     z-index: 2;
     transition: --a 1s ease-out;
+}
+
+body.is-embed .gauge-cover-2 {
+    background: conic-gradient(transparent 0deg, transparent var(--a), #000000 calc(var(--a) + 0.2%));
 }
 
 
@@ -209,7 +220,7 @@ td {
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    background-color: rgb(21, 10, 35);
+    background-color: #000000;
     overflow: hidden;
 }
 

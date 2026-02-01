@@ -259,6 +259,7 @@ class Store {
     }
 
     get mainUIBrightness() {
+        return 1;
         console.log("get mainUIBrightness");
         let mainUIBrightness = 1;
         const now = new Date(this.uiPollingTimestamp);
@@ -1188,8 +1189,8 @@ const CompactItem = ({ value, max, label, featherName, unit = "%", color, extra 
             <div className="compact-value" style={{ color }}>
                 {typeof value === 'number' ? Math.round(value) : value}{unit}
             </div>
-            <div className="compact-row" style={{ padding: '0 4px', boxSizing: 'border-box' }}>
-                <i data-feather={featherName} className="compact-icon" style={{ color: getColorAtPercent(pct), filter: 'saturate(0.5)' }}></i>
+            <div className="compact-row" test={pct} style={{ padding: '0 4px', boxSizing: 'border-box' }}>
+                <span style={{ height: 10, lineHeight: 0, color: getColorAtPercent(pct), filter: 'saturate(0.5)' }}><i data-feather={featherName} className="compact-icon" ></i></span>
                 <div className="compact-bar-container">
                     <div
                         className="compact-bar-fill"
@@ -1204,7 +1205,7 @@ const CompactItem = ({ value, max, label, featherName, unit = "%", color, extra 
                 <div>{label}</div>
                 <div style={{ opacity: 0.8, visibility: extra ? null : 'hidden' }}>{extra ? extra : '.'}</div>
             </div>
-        </div>
+        </div >
     );
 };
 
@@ -1529,6 +1530,10 @@ const Monitor = observer(() => {
         </>
     );
 });
+
+if (IS_EMBED) {
+    document.body.classList.add('is-embed');
+}
 
 ReactDOM.createRoot(document.getElementById("root")).render(
     <React.StrictMode>
