@@ -1172,15 +1172,15 @@ const FullscreenButton = () => {
     );
 };
 
-const CompactItem = ({ value, max, label, featherName, unit = "%", color, extra }) => {
+const CompactItem = ({ value, valueRaw, max, label, featherName, unit = "%", color, extra }) => {
     useEffect(() => {
         feather.replace();
     }, []);
 
     // Handle cases where value might be a formatted string (like formatBytes)
-    let numericValue = value;
-    if (typeof value === 'string') {
-        numericValue = parseFloat(value);
+    let numericValue = valueRaw ?? value;
+    if (typeof numericValue === 'string') {
+        numericValue = parseFloat(numericValue);
     }
     const pct = Math.min(100, (numericValue / max) * 100);
 
@@ -1262,10 +1262,11 @@ const Monitor = observer(() => {
                     <CompactItem value={store.usage.vram} max={100} label="VRAM" featherName="monitor" extra={`${store.usageMB.vram} MB`} />
 
                     {/* I/O */}
-                    <CompactItem value={formatBytes(store.io.diskRead)} max={store.GAUGE_LIMITS.io.diskRead.max} label="System Read" featherName="hard-drive" unit="/s" />
-                    <CompactItem value={formatBytes(store.io.diskWrite)} max={store.GAUGE_LIMITS.io.diskWrite.max} label="System Write" featherName="activity" unit="/s" />
+                    <CompactItem value={formatBytes(store.io.diskRead)} valueRaw={store.io.diskRead} max={store.GAUGE_LIMITS.io.diskRead.max} label="System Read" featherName="hard-drive" unit="/s" />
+                    <CompactItem value={formatBytes(store.io.diskWrite)} valueRaw={store.io.diskWrite} max={store.GAUGE_LIMITS.io.diskWrite.max} label="System Write" featherName="activity" unit="/s" />
                     <CompactItem
                         value={formatBytes(store.io.networkRx)}
+                        valueRaw={store.io.networkRx}
                         max={store.GAUGE_LIMITS.io.networkRx.max}
                         label="Network RX"
                         featherName="globe"
@@ -1274,6 +1275,7 @@ const Monitor = observer(() => {
                     />
                     <CompactItem
                         value={formatBytes(store.io.networkTx)}
+                        valueRaw={store.io.networkTx}
                         max={store.GAUGE_LIMITS.io.networkTx.max}
                         label="Network TX"
                         featherName="globe"
