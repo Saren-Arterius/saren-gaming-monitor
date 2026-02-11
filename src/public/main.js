@@ -20,7 +20,7 @@ let NIGHT_VOL = parseFloat(localStorage.getItem('night_volume') || '1');
 const COLOR_SAFE = "#89e08b";
 const COLOR_STOPS = [
     { color: "#70CAD1", position: 0 },
-    { color: "#F7EE7F", position: 50 },
+    { color: "#F7EE7F", position: 75 },
     { color: "#A63D40", position: 100 }
 ];
 const STATE = {
@@ -40,71 +40,29 @@ const { makeAutoObservable, autorun, reaction } = mobx;
 const { Observer, observer } = mobxReactLite;
 // const { Circle, Cpu, Activity } = require('react-feather');
 
-const modalOverlayStyle = {
-    display: "flex",
-    width: "100%",
-    height: "100%",
-    position: "fixed",
-    zIndex: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    backdropFilter: "blur(24px)",
-    backgroundColor: "rgba(0,0,0,0.8)",
-    top: 0,
-    left: 0,
-    transition: "opacity 0.3s ease-in-out",
-    opacity: 0
-};
-
-const modalContainerStyle = {
-    backgroundColor: "rgba(255,255,255,0.05)",
-
-    // backgroundColor: "#111",
-    width: "90%",
-    maxWidth: 800,
-    maxHeight: "90vh",
-    borderRadius: 12,
-    display: "flex",
-    flexDirection: "column",
-    overflow: "hidden",
-    border: "1px solid rgba(255, 255, 255, 0.1)",
-    boxShadow: "0 10px 30px rgba(0,0,0,0.5)"
-};
-
-const modalHeaderStyle = {
-    padding: 20,
-    borderBottom: "1px solid #333",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    // backgroundColor: "#1a1a1a"
-};
-
 const Modal = ({ title, onClose, children, style }) => (
     <div
-        style={{ ...modalOverlayStyle, ...style }}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-2xl transition-opacity duration-300"
+        style={{ ...style, backgroundColor: 'rgba(0,0,0,0.2)' }}
         onClick={(e) => {
-            // console.log('store.lastInteract = Date.now();')
             store.lastInteract = Date.now();
             onClose(e);
         }}
     >
         <div
-            className="container"
-            style={modalContainerStyle}
+            className="w-[90%] max-w-3xl max-h-[90vh] bg-white/5 rounded-2xl flex flex-col overflow-hidden border border-white/10 shadow-2xl"
             onClick={(e) => {
-                // console.log('store.lastInteract = Date.now();')
                 store.lastInteract = Date.now();
                 e.stopPropagation();
             }}
         >
-            <div style={modalHeaderStyle}>
-                <div style={{ fontSize: "1.2em", fontWeight: 600 }}>{title}</div>
-                <div style={{ cursor: "pointer", padding: 5, fontSize: "1.2em" }} onClick={onClose}>
+            <div className="p-5 border-b border-white/10 flex justify-between items-center">
+                <div className="text-xl font-semibold text-white/90">{title}</div>
+                <div className="cursor-pointer p-2 text-xl hover:text-accent transition-colors" onClick={onClose}>
                     ✕
                 </div>
             </div>
-            <div style={{ overflowY: "auto", padding: 20, height: '100vh' }}>{children}</div>
+            <div className="overflow-y-auto p-6 custom-scrollbar">{children}</div>
         </div>
     </div>
 );
@@ -359,8 +317,12 @@ function formatBytes(bytes, decimals = 1, name = "B", space = true) {
     const dm = decimals < 0 ? 0 : decimals;
     const sizes = ["", "k", "M", "G", "T", "P", "E", "Z", "Y"];
 
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    const formattedValue = parseFloat((bytes / Math.pow(k, i)).toFixed(dm));
+    let i = Math.floor(Math.log(bytes) / Math.log(k));
+    let formattedValue = parseFloat((bytes / Math.pow(k, i)).toFixed(dm));
+    if (formattedValue >= 1000) {
+        i += 1;
+        formattedValue = parseFloat((bytes / Math.pow(k, i)).toFixed(dm));
+    }
     const unit = sizes[i];
     return space ? `${formattedValue} ${unit}${name}` : `${formattedValue}${unit}${name}`;
 }
@@ -402,7 +364,7 @@ const ScrubMiniProgress = observer(({ storageKey, isSmallScreen, small }) => {
                 marginTop: 4,
                 overflow: "hidden",
                 position: "absolute",
-                bottom: (isSmallScreen ? -26 : -20) - (small ? 30 : 0),
+                bottom: 10,
                 left: isSmallScreen ? null : "10%"
             }}
         >
@@ -422,6 +384,13 @@ const ScrubMiniProgress = observer(({ storageKey, isSmallScreen, small }) => {
         </div>
     );
 });
+
+const getGaugeSize = (isSmallScreen, small) => {
+    return {
+        width: isSmallScreen ? (small ? 100 : 100) : (small ? 170 : 170),
+        height: isSmallScreen ? (small ? 100 : 100) : (small ? 150 : 150)
+    }
+}
 
 const Gauge = ({
     value,
@@ -452,110 +421,89 @@ const Gauge = ({
     let valueExtra = { usage: "%", temperature: "°C" }[className] || "";
     if (className === "io") value = formatBytes(value) + "/s";
 
-    let gaugeSize = small ? 120 : undefined;
-    let featherTop = small ? 40 : undefined;
-    let featherSize = undefined;
-    let gaugeValueMT = undefined;
-    let ioTransformLabelMarginTop = undefined;
-    let ioTransform = "scale(0.8)";
     let isSmallScreen = store.windowWidth < SMALL_WIDTH || store.windowHeight < SMALL_HEIGHT;
-    if (isSmallScreen) {
-        gaugeSize = small ? 60 : 80;
-        featherTop = small ? 20 : 30;
-        featherSize = small ? 20 : 24;
-        gaugeValueMT = small ? 45 : 60;
-        ioTransformLabelMarginTop = -10;
-        ioTransform = "scale(0.5)";
-    }
+
     let labelExtras =
         (valueMB ? `${valueMB} MB` : "") +
         (valueGB ? `${valueGB} GB` : "") +
         (cpuFreq
-            ? `${Math.round(Math.min(...store.frequencies.cpu))}-${Math.round(Math.max(...store.frequencies.cpu))} MHz`
+            ? `${Math.round(Math.min(...store.frequencies.cpu))} - ${Math.round(Math.max(...store.frequencies.cpu))} ${isSmallScreen ? '' : 'Mhz'}`
             : "") +
         (gpuFreq ? `${store.frequencies.gpuCore} MHz` : "") +
         (gpuPwr ? `${store.pwr.gpu} W` : "") +
         (labelExtra || "");
 
+    const radius = 45;
+    const circumference = 2 * Math.PI * radius;
+    const strokeDashoffset = circumference - (pct / 100) * circumference;
+
+    let valueSize;
+    if (store.windowWidth < 400) {
+        valueSize = 16;
+    } else if (isSmallScreen) {
+        valueSize = 20;
+    } else {
+        valueSize = 32;
+    }
     return (
         <div
-            className="gauge"
-            style={{
-                width: gaugeSize,
-                height: gaugeSize,
-                cursor: clickFn ? "pointer" : undefined,
-                transform: clickFn ? "scale(1)" : undefined,
-                transition: clickFn ? "transform 0.2s ease-in-out, filter 0.2s ease-in-out" : undefined
-            }}
-            onMouseEnter={
-                window.matchMedia("(hover: hover) and (pointer: fine)").matches && clickFn
-                    ? (e) => {
-                        e.currentTarget.style.transform = "scale(1.1)";
-                        e.currentTarget.style.filter = "brightness(1.2)";
-                    }
-                    : undefined
-            }
-            onMouseLeave={
-                window.matchMedia("(hover: hover) and (pointer: fine)").matches && clickFn
-                    ? (e) => {
-                        e.currentTarget.style.transform = "scale(1)";
-                        e.currentTarget.style.filter = "brightness(1)";
-                    }
-                    : undefined
-            }
-            onTouchStart={
-                clickFn
-                    ? (e) => {
-                        e.currentTarget.style.transform = "scale(1.1)";
-                        e.currentTarget.style.filter = "brightness(1.2)";
-                    }
-                    : undefined
-            }
-            onTouchEnd={
-                clickFn
-                    ? (e) => {
-                        e.currentTarget.style.transform = "scale(1)";
-                        e.currentTarget.style.filter = "brightness(1)";
-                    }
-                    : undefined
-            }
+            className={`group relative flex flex-col items-center justify-center transition-all duration-300 ${clickFn ? "cursor-pointer hover:scale-105 active:scale-95" : ""
+                }`}
+            style={getGaugeSize(isSmallScreen, small)}
             onClick={() => clickFn && clickFn()}
         >
-            <div className="gauge-body">
-                <div>
-                    <div className="gauge-fill"></div>
-                    <div className="gauge-cover"></div>
-                    <div className="gauge-cover-2" style={{ "--a": `${pct}%` }}></div>
-                    <div className="gauge-cover-outer">
-                        <div className="feather-wrapper" style={{ color: `${iconColor}`, top: featherTop }}>
-                            <i data-feather={featherName} style={{ width: featherSize, height: featherSize }}></i>
-                        </div>
-                        <div
-                            className="gauge-value"
-                            style={{
-                                transform: className === "io" ? ioTransform : undefined,
-                                marginTop: gaugeValueMT,
-                                color: textColor || undefined
-                            }}
-                        >
-                            {value}
-                            {valueExtra}
-                            {textExtra || ""}
-                        </div>
-                        <div
-                            className="gauge-label"
-                            style={{
-                                marginTop: className === "io" ? ioTransformLabelMarginTop : undefined
-                            }}
-                        >
-                            {label}
-                            {!isSmallScreen && labelExtras ? " / " + labelExtras : ""}
-                        </div>
-                        {isSmallScreen && <div className="gauge-label">{labelExtras}</div>}
-                        <ScrubMiniProgress storageKey={storageKey} isSmallScreen={isSmallScreen} small={small} />
-                    </div>
+            <svg className="absolute inset-0 w-full h-full -rotate-[225deg]" viewBox="0 0 100 100">
+                <circle
+                    cx="50"
+                    cy="50"
+                    r={radius}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={isSmallScreen ? '4' : "8"}
+                    className="text-white/5"
+                    strokeDasharray={`${circumference * 0.75} ${circumference * 0.25}`}
+                    strokeLinecap="round"
+                />
+                <circle
+                    cx="50"
+                    cy="50"
+                    r={radius}
+                    fill="none"
+                    stroke={iconColor}
+                    strokeWidth={isSmallScreen ? '4' : "8"}
+                    strokeDasharray={circumference}
+                    style={{
+                        strokeDashoffset: strokeDashoffset,
+                        transition: "stroke-dashoffset 1s ease, stroke 1s ease"
+                    }}
+                    strokeLinecap="round"
+                />
+            </svg>
+
+            <div className="flex flex-col items-center justify-center z-10 text-center mt-2">
+                <div className="mb-1 opacity-80 group-hover:opacity-100 transition-opacity" style={{ color: iconColor }}>
+                    <i data-feather={featherName} className={`${isSmallScreen ? 'w-6 h-6' : 'w-8 h-8'}`}></i>
                 </div>
+                <div
+                    className={`leading-none tracking-tighter text-[${valueSize}px]`}
+                    style={{ color: textColor || 'white' }}
+                >
+                    {value}{valueExtra}{textExtra || ""}
+                </div>
+                <div
+                    className={`mt-1 uppercase tracking-widest opacity-30 font-bold ${isSmallScreen ? 'text-[9px]' : 'text-[9px]'}`}
+                    style={{ marginTop: -0 }}>
+                    {label}
+                </div>
+                {(
+                    <div
+                        className={`${isSmallScreen ? 'text-[12px]' : 'text-[10px]'} opacity-20 font-medium uppercase tracking-tighter`}
+                        style={{ marginTop: isSmallScreen ? -4 : -4 }}>
+                        {labelExtras || '\u00A0'}
+                    </div>
+                )}
             </div>
+            {className !== 'temperature' && <ScrubMiniProgress storageKey={storageKey} isSmallScreen={isSmallScreen} />}
         </div>
     );
 };
@@ -584,7 +532,6 @@ const FullScreenStatus = observer(() => {
         shouldShow = true;
         content = (
             <div style={fullScreenOverlayStyle}>
-                <div style={{ fontSize: "4em" }}>🌐</div>
                 <div style={{ fontSize: "3em" }}>Connecting...</div>
             </div>
         );
@@ -592,7 +539,6 @@ const FullScreenStatus = observer(() => {
         shouldShow = true;
         content = (
             <div style={fullScreenOverlayStyle}>
-                <div style={{ fontSize: "4em" }}>🌐</div>
                 <div style={{ fontSize: "3em" }}>Connected</div>
             </div>
         );
@@ -706,7 +652,7 @@ const fullScreenOverlayStyle = {
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 5,
+    zIndex: 10,
     top: 0,
     left: 0,
     transition: "opacity 0.3s ease-in-out"
@@ -865,7 +811,7 @@ const InfoGrid = ({ items, isSmallScreen, noBorder }) => (
                 borderRadius: 6,
                 padding: "8px 12px",
                 backgroundColor: "rgba(255, 255, 255, 0.02)",
-                width: isSmallScreen ? 'calc(100% - 26px)' : null
+                width: isSmallScreen ? 'calc(100%)' : null
             }}>
                 <div style={{ fontSize: '0.7em', fontWeight: 600, opacity: 0.4, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4, fontFamily: 'system-ui, -apple-system, sans-serif' }}>{item.label}</div>
                 <div style={{ fontSize: '1.1em', fontWeight: 600, letterSpacing: '-0.02em', color: item.color || "inherit" }}>{item.value}</div>
@@ -1080,32 +1026,7 @@ const FullscreenButton = () => {
     return (
         <div
             onClick={toggleFullscreen}
-            style={{
-                position: "fixed",
-                right: "20px",
-                bottom: "20px",
-                width: "50px",
-                height: "50px",
-                backgroundColor: "rgba(0, 0, 0, 0.5)",
-                borderRadius: "50%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "24px",
-                cursor: "pointer",
-                zIndex: 100,
-                backdropFilter: "blur(4px)",
-                userSelect: "none",
-                transition: "transform 0.2s ease, opacity 0.2s ease"
-            }}
-            onMouseEnter={(e) => {
-                e.currentTarget.style.transform = "scale(1.1)";
-                e.currentTarget.style.backgroundColor = "rgba(0, 0, 0, 0.8)";
-            }}
-            onMouseLeave={(e) => {
-                e.currentTarget.style.transform = "scale(1)";
-                e.currentTarget.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
-            }}
+            className="fixed right-6 bottom-6 w-12 h-12 bg-white/5 hover:bg-white/10 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-xl cursor-pointer z-[100] transition-all duration-300 hover:scale-110 active:scale-90"
         >
             🖼
         </div>
@@ -1121,37 +1042,24 @@ const Monitor = observer(() => {
     let isSmallScreen = store.windowWidth < SMALL_WIDTH || store.windowHeight < SMALL_HEIGHT;
     let isSmallLandscape = isSmallScreen && store.windowWidth > store.windowHeight;
 
-    let sectionMinHeight = isSmallScreen ? 170 : undefined;
-    let infoFontSize = isSmallScreen ? "70%" : undefined;
-    let infoWidth = isSmallScreen ? 150 : 240;
-    let infoMT = isSmallScreen ? -20 : undefined;
     const isUsingBackupNetwork = store.io.isUsingBackup;
     const systemSSD = store.disks['systemSSD'];
-
-    let useSmall = Object.keys(store.disks).length >= 2;
-    console.log("render");
-
+    let useSmall = true;
     return (
-        <>
+        <div className="min-h-screen bg-black text-white font-sans selection:bg-accent/30" style={{ width: '100%' }}>
             <div
-                className="container"
+                className={`mx-auto p-2 md:p-8 transition-all duration-1000 space-y-4 ${isSmallLandscape ? "flex flex-wrap max-w-none" : "max-w-4xl"
+                    }`}
                 style={{
-                    display: isSmallLandscape ? "flex" : undefined,
-                    flexWrap: isSmallLandscape ? "wrap" : undefined,
-                    maxWidth: isSmallLandscape ? "100vw" : undefined
+                    filter: store.mainUI?.style.filter
                 }}
             >
-                <div style={{ paddingTop: 10 }}></div>
-                <div
-                    className="section"
-                    style={{
-                        minHeight: sectionMinHeight,
-                        width: isSmallLandscape ? "calc(50% - 40px)" : undefined,
-                        marginRight: isSmallLandscape ? 80 : undefined
-                    }}
-                >
-                    <div className="section-title">Temperature</div>
-                    <div className="gauge-container">
+                {/* Temperature Section */}
+                <div className={`flex flex-col ${isSmallLandscape ? "w-1/2 pr-4" : "w-full"}`}>
+                    <div className="text-xs font-bold uppercase tracking-[0.2em] text-white/30 mb-2 flex items-center gap-2">
+                        Temperature
+                    </div>
+                    <div className="flex justify-between">
                         <Gauge
                             small={useSmall}
                             value={store.temperatures.cpu}
@@ -1187,17 +1095,15 @@ const Monitor = observer(() => {
                                 textExtra={STORAGE_EXTRA_TEXT[store.storageInfo[disk.label]?.info?.status || 0]}
                             />
                         ))}
-                    </div >
-                </div >
-                <div
-                    className="section"
-                    style={{
-                        minHeight: sectionMinHeight,
-                        width: isSmallLandscape ? "calc(50% - 40px)" : undefined
-                    }}
-                >
-                    <div className="section-title">Usage</div>
-                    <div className="gauge-container" style={{ marginTop: isSmallLandscape ? 25 : undefined }}>
+                    </div>
+                </div>
+
+                {/* Usage Section */}
+                <div className={`flex flex-col ${isSmallLandscape ? "w-1/2 pl-4" : "w-full"}`}>
+                    <div className="text-xs font-bold uppercase tracking-[0.2em] text-white/30 mb-2 flex items-center gap-2">
+                        Usage
+                    </div>
+                    <div className="flex justify-between">
                         <Gauge
                             value={store.usage.cpu}
                             max={100}
@@ -1206,15 +1112,6 @@ const Monitor = observer(() => {
                             featherName="cpu"
                             small
                             cpuFreq
-                        />
-                        <Gauge
-                            value={store.usage.gpu}
-                            max={100}
-                            label="GPU"
-                            className="usage"
-                            featherName="image"
-                            small
-                            gpuFreq
                         />
                         <Gauge
                             value={store.usage.ram}
@@ -1226,6 +1123,15 @@ const Monitor = observer(() => {
                             small
                         />
                         <Gauge
+                            value={store.usage.gpu}
+                            max={100}
+                            label="GPU"
+                            className="usage"
+                            featherName="image"
+                            small
+                            gpuFreq
+                        />
+                        <Gauge
                             value={store.usage.vram}
                             valueMB={store.usageMB.vram}
                             max={100}
@@ -1234,25 +1140,21 @@ const Monitor = observer(() => {
                             featherName="monitor"
                             small
                         />
-                    </div >
-                </div >
-                <div
-                    className="section"
-                    style={{
-                        minHeight: sectionMinHeight,
-                        width: isSmallLandscape ? "calc(50% - 40px)" : undefined,
-                        marginRight: isSmallLandscape ? 40 : undefined,
-                        marginTop: isSmallLandscape ? 10 : undefined
-                    }}
-                >
-                    <div className="section-title">I/O</div>
-                    <div className="gauge-container" style={{ marginTop: isSmallLandscape ? 20 : undefined }}>
+                    </div>
+                </div>
+
+                {/* I/O Section */}
+                <div className={`flex flex-col ${isSmallLandscape ? "w-1/2 pr-4" : "w-full"}`}>
+                    <div className="text-xs font-bold uppercase tracking-[0.2em] text-white/30 mb-2 flex items-center gap-2">
+                        I/O
+                    </div>
+                    <div className="flex justify-between">
                         <Gauge
                             value={/*systemSSD ? systemSSD.diskRead : */store.io.diskRead}
                             max={store.GAUGE_LIMITS.io.diskRead.max}
                             label="System Read"
                             className="io"
-                            featherName="hard-drive"
+                            featherName="book-open"
                             small
                         />
                         <Gauge
@@ -1260,7 +1162,7 @@ const Monitor = observer(() => {
                             max={store.GAUGE_LIMITS.io.diskWrite.max}
                             label="System Write"
                             className="io"
-                            featherName="activity"
+                            featherName="edit-3"
                             small
                         />
                         <Gauge
@@ -1277,7 +1179,7 @@ const Monitor = observer(() => {
                                 "PPS"
                             )}
                             className="io"
-                            featherName="globe"
+                            featherName="download"
                             small
                             textColor={isUsingBackupNetwork ? "#F7EE7F" : undefined}
                         />
@@ -1295,27 +1197,55 @@ const Monitor = observer(() => {
                                 "PPS"
                             )}
                             className="io"
-                            featherName="globe"
+                            featherName="upload"
                             small
                             textColor={isUsingBackupNetwork ? "#F7EE7F" : undefined}
                         />
                     </div>
                 </div>
-                <div
-                    style={{
-                        display: "flex",
-                        marginTop: isSmallLandscape ? 10 : infoMT,
-                        width: isSmallLandscape ? "calc(50% - 40px)" : undefined,
-                        flexGrow: isSmallLandscape ? 1 : undefined
-                    }}
-                >
-                    <div className="section" style={{ flexGrow: 1, minHeight: sectionMinHeight }}>
-                        <div className="section-title">Fan Speed</div>
-                        <div className="gauge-container">
+
+                {/* Storage Section */}
+                <div className={`flex flex-col ${isSmallLandscape ? "w-1/2 pl-4" : "w-full"}`}>
+                    <div className="text-xs font-bold uppercase tracking-[0.2em] text-white/30 mb-2 flex items-center gap-2">
+                        Storage
+                    </div>
+                    <div className="flex justify-between">
+                        {Object.values(store.disks).map((disk) => (
+                            <Gauge
+                                key={disk.label}
+                                value={disk.usage}
+                                valueGB={disk.usageGB}
+                                max={100}
+                                label={disk.name}
+                                storageKey={disk.label}
+                                className="usage"
+                                featherName="hard-drive"
+                                small
+                                clickFn={() => (store.storageModalTarget = disk.label)}
+                                textColor={STORAGE_TEXT_COLOR[store.storageInfo[disk.label]?.info?.status || 0]}
+                                textExtra={STORAGE_EXTRA_TEXT[store.storageInfo[disk.label]?.info?.status || 0]}
+                            />
+                        ))}
+                        {/* Fillers to maintain alignment if fewer than 4 disks */}
+                        {Object.values(store.disks).length < 1 && <div style={getGaugeSize(isSmallScreen, true)}></div>}
+                        {Object.values(store.disks).length < 2 && <div style={getGaugeSize(isSmallScreen, true)}></div>}
+                        {Object.values(store.disks).length < 3 && <div style={getGaugeSize(isSmallScreen, true)}></div>}
+                        {Object.values(store.disks).length < 4 && <div style={getGaugeSize(isSmallScreen, true)}></div>}
+                    </div>
+                </div>
+
+                {/* Fan & System Info Section */}
+                <div className={`flex ${isSmallLandscape ? "w-1/2 pl-4" : "w-full flex-col"} gap-4`}>
+                    <div className="flex-1">
+                        <div className="text-xs font-bold uppercase tracking-[0.2em] text-white/30 mb-2 flex items-center gap-2">
+                            Fan Speed
+                        </div>
+                        <div className="flex justify-between">
                             <Gauge
                                 value={store.fanSpeed.cpu}
                                 max={store.GAUGE_LIMITS.fanSpeed.cpu.max}
-                                label="CPU"
+                                small={true}
+                                label="CPU RPM"
                                 className="fan"
                                 featherName="cpu"
                             />
@@ -1324,62 +1254,43 @@ const Monitor = observer(() => {
                                 max={store.GAUGE_LIMITS.fanSpeed.motherboard.max}
                                 label="Motherboard"
                                 className="fan"
+                                small={true}
                                 featherName="server"
                             />
+                            <div style={getGaugeSize(isSmallScreen, true)}></div>
+                            <div style={getGaugeSize(isSmallScreen, true)}></div>
                         </div>
                     </div>
-                    <div
-                        className="section"
-                        style={{
-                            display: "flex",
-                            width: isSmallLandscape ? 170 : infoWidth,
-                            minHeight: sectionMinHeight
-                        }}
-                    >
-                        <div className="section-title">&nbsp;</div>
+
+                    <div className="flex flex-col items-end justify-end text-right space-y-1 min-w-[200px]" style={{ marginTop: isSmallScreen ? -150 : -170 }}>
                         <div
-                            style={{
-                                display: "flex",
-                                flexDirection: "column",
-                                alignItems: "end",
-                                justifyContent: "end",
-                                paddingBottom: isSmallScreen ? 10 : 20,
-                                width: "100%",
-                                fontSize: infoFontSize,
-                                zIndex: 2
-                            }}
+                            className="text-2xl font-bold tracking-tighter"
+                            style={{ color: COLOR_STOPS[loadLevel].color }}
                         >
-                            <div
-                                style={{
-                                    fontSize: "1.5em",
-                                    fontWeight: 600,
-                                    zIndex: 2,
-                                    color: COLOR_STOPS[loadLevel].color
-                                }}
-                            >
-                                {store.SYSTEM_INFO.hostname}
-                            </div>
-                            <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.cpu}</div>
-                            <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.gpu}</div>
-                            <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.case}</div>
-                            <div style={{ opacity: 0.5 }}>{store.SYSTEM_INFO.os}</div>
-                            <div style={{ fontWeight: 500, opacity: 0.8 }}>{store.system}</div>
-                            <div style={{ fontWeight: 600 }}>{getGMT8Time(store.lastUpdate)}</div>
-                        </div>
-                    </div>
-                </div>
-                {/* <NetworkBars isSmallLandscape={isSmallLandscape} /> */}
-            </div>
+                            {store.SYSTEM_INFO.hostname}
+                        </div >
+                        <div className="text-[10px] uppercase tracking-widest text-white/40 font-bold !leading-[12px]">{store.SYSTEM_INFO.cpu}</div>
+                        {store.SYSTEM_INFO.gpu && <div className="text-[10px] uppercase tracking-widest text-white/40 font-bold !leading-[12px]">{store.SYSTEM_INFO.gpu}</div>}
+                        <div className="text-[10px] uppercase tracking-widest text-white/40 font-bold !leading-[12px]">{store.SYSTEM_INFO.case}</div>
+                        <div className="text-[10px] uppercase tracking-widest text-white/40 font-bold !leading-[12px]">{store.SYSTEM_INFO.os}</div>
+                        <div className="text-[10px] uppercase tracking-widest text-white/40 font-bold !leading-[12px]">{store.system?.split('|').join('·')}</div>
+                        <div className="text-s text-white/60 mt-4">{getGMT8Time(store.lastUpdate)}</div>
+                    </div >
+                </div >
+
+
+
+            </div >
 
             {!shouldPowerSave() && (
-                <>
+                <React.Fragment>
                     <StorageModal />
                     <AlertOverlay />
-                </>
+                </React.Fragment>
             )}
             <FullScreenStatus />
             <FullscreenButton />
-        </>
+        </div >
     );
 });
 
