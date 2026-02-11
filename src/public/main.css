@@ -1,203 +1,75 @@
+@layer base {
+  body {
+    @apply bg-black text-white font-sans antialiased;
+  }
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-white/10 rounded-full hover:bg-white/20 transition-colors;
+}
+
+/* Keep MobX transition property for Gauge */
+@property --a {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+
+/* Feather icon global sizing */
+.feather {
+  @apply w-full h-full;
+}
+
+/* Ensure dotlottie-player transitions smoothly */
+dotlottie-player {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 body {
-    background-color: rgb(0, 0, 0);
-    justify-content: center;
-    align-items: center;
-    min-height: 100vh;
-    margin: 0;
-    color: white;
+  background-color: rgb(0, 0, 0);
 }
 
 #root {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    flex-direction: column;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  overflow-x: hidden;
 }
 
-.container {
-    width: calc(100vw - 40px);
-    max-width: 600px;
-}
-
-.section {
-    min-height: 200px;
-}
-
-.section-title {
-    font-weight: 500;
-    font-size: 1.2em;
-    /* margin-top: -20px; */
-    margin-bottom: 5px;
-    color: #fff;
-    opacity: 0.9;
-}
-
-.gauge-container {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 20px;
-}
-
-.gauge {
-    width: 150px;
-    height: 150px;
-}
-
-.gauge-body {
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    position: relative;
-}
-
-.gauge-fill {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    transform: rotate(-135deg);
-    background: conic-gradient(#70CAD1 0%, #F7EE7F 37.5%, #A63D40 75%, transparent 0%);
-    filter: brightness(1.25);
-    z-index: 2;
-}
-
-.gauge-cover {
-    width: 75%;
-    height: 75%;
-    background: rgb(0, 0, 0);
-    border-radius: 50%;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 2;
-}
-
-
-.gauge-cover-2 {
-    width: 105%;
-    height: 105%;
-    border-radius: 50%;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%) rotate(-135deg);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background: conic-gradient(transparent 0deg, transparent var(--a), rgb(0, 0, 0) calc(var(--a) + 0.2%));
-    z-index: 2;
-    transition: --a 1s ease-out;
-}
-
-
-.gauge-cover-outer {
-    border-radius: 50%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-}
-
-.container::before {
-    content: '';
-    position: fixed;
-    /* backdrop-filter: blur(32px) brightness(3) saturate(2); */
-    opacity: 0.25;
-    z-index: 3;
-    inset: 0px;
-    height: 100vh;
-    pointer-events: none;
-}
-
-@media screen and (max-width: 540px) {
-
-    /* Your CSS rules here */
-    .container::before {
-        /* backdrop-filter: blur(24px) brightness(3) saturate(2); */
-    }
-}
-
-@media screen and (max-height: 420px) {
-
-    /* Your CSS rules here */
-    .container::before {
-        /* backdrop-filter: blur(24px) brightness(3) saturate(2); */
-    }
-}
-
-
-.gauge-value {
-    color: white;
-    font-size: 2em;
-    font-weight: 600;
-    margin-top: 100px;
-    white-space: nowrap;
-    z-index: 2;
-}
-
-.gauge-label {
-    margin-top: -5px;
-    color: white;
-    font-size: 0.8em;
-    opacity: 0.5;
-    white-space: nowrap;
-    z-index: 2;
-}
 
 .chart {
-    width: 100%;
-    height: 100px;
-    background: #2a2a2a;
-    border-radius: 8px;
-    margin-bottom: 15px;
+  width: 100%;
+  height: 100px;
+  background: #2a2a2a;
+  border-radius: 8px;
+  margin-bottom: 15px;
 }
 
-.fan-speed {
-    display: flex;
-    align-items: center;
-    margin-bottom: 10px;
-    background: #2a2a2a;
-    padding: 10px;
-    border-radius: 5px;
-}
-
-.feather {
-    width: 36px;
-    height: 36px;
-}
-
-.feather-wrapper {
-    z-index: 2;
-    position: absolute;
-    top: 52px;
-    filter: contrast(2) brightness(1.5);
-}
 
 dotlottie-player {
-    transition: all 0.2s ease-in-out;
+  transition: all 0.2s ease-in-out;
 }
 
 @property --a {
-    syntax: '<percentage>';
-    inherits: false;
-    initial-value: 0%;
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
 }
 
 
 :root {
-    --color-table: rgb(112, 202, 209);
-    --color-accent: rgba(112, 202, 209, 0.1);
-    --color-bg-secondary: rgb(42, 42, 42);
-    --border-radius: 8px;
-}
-
-tbody>tr {
-    /* background-color: rgb(26, 26, 26) */
-}
-
-th,
-td {
-    padding-left: 12px !important;
+  --color-table: rgb(112, 202, 209);
+  --color-accent: rgba(112, 202, 209, 0.1);
+  --color-bg-secondary: rgb(42, 42, 42);
+  --border-radius: 8px;
 }

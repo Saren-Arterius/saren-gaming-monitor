@@ -4,8 +4,22 @@
 <head>
   <meta charset="UTF-8" />
   <title>System Monitor</title>
-  <link rel="stylesheet" href="/vendor/mvp.css" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            safe: '#89e08b',
+            accent: '#70CAD1',
+            warning: '#F7EE7F',
+            danger: '#A63D40',
+          }
+        }
+      }
+    }
+  </script>
   <link rel="stylesheet" href="/main.css" />
 </head>
 
