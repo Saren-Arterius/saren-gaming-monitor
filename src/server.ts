@@ -33,6 +33,7 @@ export class AppServer {
     private async handleRequest(req: Request) {
         const url = new URL(req.url);
         const pathname = url.pathname;
+        const isLite = url.searchParams.has('lite');
 
         // API Routes
         if (pathname === '/network-total') {
@@ -54,15 +55,29 @@ export class AppServer {
                 const storageInfo = this.systemMonitor.getStorageInfo();
                 const host = req.headers.get('host');
                 const includeIPHistory = host === CONFIG.server.trustedHost;
-                const networkMetrics = this.systemMonitor.getNetworkMetricsPartial(includeIPHistory);
+                let networkMetrics = this.systemMonitor.getNetworkMetricsPartial(includeIPHistory);
 
+                if (isLite && networkMetrics) {
+                    // Create a shallow copy to prevent modifying the cached reference if applicable
+                    networkMetrics = { ...networkMetrics };
+                    if (networkMetrics.ping_statistics) {
+                        const { minute_history, ...pingRest } = networkMetrics.ping_statistics;
+                        networkMetrics.ping_statistics = pingRest as any;
+                    }
+                    if (networkMetrics.network_traffic) {
+                        const { minute_history, ...trafficRest } = networkMetrics.network_traffic;
+                        networkMetrics.network_traffic = trafficRest as any;
+                    }
+                }
                 return Response.json({
                     info: CONFIG.initInfo,
                     metrics,
                     networkMetrics,
                     storageInfo,
-                    iotMetrics: this.iotMonitor.getCachedData(),
-                    internetMetrics: this.internetMonitor.getCachedData()
+                    ...(!isLite && {
+                        iotMetrics: this.iotMonitor.getCachedData(),
+                        internetMetrics: this.internetMonitor.getCachedData()
+                    })
                 });
             } catch (error) {
                 return Response.json({ error: 'Failed to fetch system metrics' }, { status: 500 });

@@ -2060,7 +2060,7 @@ const Monitor = observer(() => {
                     style={{
                         width: 'calc(100% + 20px)',
                         border: 0,
-                        height: 196,
+                        height: 199,
                         marginLeft: -10
                     }}>
                 </iframe>
