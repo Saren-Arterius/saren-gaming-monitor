@@ -264,6 +264,7 @@ class Store {
     }
 
     get mainUIBrightness() {
+        return 1;
         console.log("get mainUIBrightness");
         let mainUIBrightness = 1;
         const now = new Date(this.uiPollingTimestamp);
@@ -401,7 +402,7 @@ const ScrubMiniProgress = observer(({ storageKey, isSmallScreen, small }) => {
                 marginTop: 4,
                 overflow: "hidden",
                 position: "absolute",
-                bottom: (isSmallScreen ? -36 : -20) - (small ? 30 : 0),
+                bottom: (isSmallScreen ? -26 : -20) - (small ? 30 : 0),
                 left: isSmallScreen ? null : "10%"
             }}
         >

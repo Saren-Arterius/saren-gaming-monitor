@@ -605,7 +605,7 @@ export class SystemMonitor {
 
         // Check filesystem type
         if (!this.fsTypes[mountPoint]) {
-            const { stdout: fsType } = await execAsync(`findmnt -n -o FSTYPE -T ${mountPoint}`);
+            const { stdout: fsType } = await execAsync(`findmnt -n -o FSTYPE -T ${mountPoint} | uniq`);
             this.fsTypes[mountPoint] = fsType.trim();
         }
         const isBtrfs = this.fsTypes[mountPoint] === 'btrfs';
