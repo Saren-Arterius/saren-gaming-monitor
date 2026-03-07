@@ -387,7 +387,7 @@ const ScrubMiniProgress = observer(({ storageKey, isSmallScreen }) => {
                 marginTop: 4,
                 overflow: "hidden",
                 position: "absolute",
-                bottom: isSmallScreen ? -66 : -50,
+                bottom: isSmallScreen ? -0 : -0,
                 left: isSmallScreen ? null : "10%"
             }}
         >
@@ -438,7 +438,9 @@ const Gauge = ({
         feather.replace();
     }, []);
 
-    let pct = ((value - min) / (max - min)) * 75;
+    let rawPct = (value - min) / (max - min);
+    if (className === "io") rawPct ** 0.5;
+    let pct = rawPct * 75;
     if (pct > 75) pct = 75;
     let iconColor = getColorAtPercent(pct / 0.75);
     let valueExtra = { usage: "%", temperature: "°C" }[className] || "";
@@ -1918,7 +1920,7 @@ const Monitor = observer(() => {
                         {store.SYSTEM_INFO.gpu && <div className="text-[10px] uppercase tracking-widest text-white/40 font-bold !leading-[12px]">{store.SYSTEM_INFO.gpu}</div>}
                         <div className="text-[10px] uppercase tracking-widest text-white/40 font-bold !leading-[12px]">{store.SYSTEM_INFO.case}</div>
                         <div className="text-[10px] uppercase tracking-widest text-white/40 font-bold !leading-[12px]">{store.SYSTEM_INFO.os}</div>
-                            <div className="text-[10px] uppercase tracking-widest text-white/40 font-bold !leading-[12px]">{store.system?.split('|').join('·')}</div>
+                        <div className="text-[10px] uppercase tracking-widest text-white/40 font-bold !leading-[12px]">{store.system?.split('|').join('·')}</div>
                         <div className="text-s text-white/60 mt-4">{getGMT8Time(store.lastUpdate)}</div>
                     </div>
                 </div>

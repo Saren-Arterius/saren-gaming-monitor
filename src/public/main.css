@@ -44,6 +44,8 @@ body {
   align-items: center;
   flex-direction: column;
   overflow-x: hidden;
+  padding-left: 0.5em;
+  padding-right: 0.5em;
 }
 
 
