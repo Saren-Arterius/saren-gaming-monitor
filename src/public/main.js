@@ -433,11 +433,14 @@ const Gauge = ({
     const circumference = 2 * Math.PI * radius;
     const strokeDashoffset = circumference - (pct / 100) * circumference;
 
+    let finalText = `${value}${valueExtra}${textExtra || ""}`
     let valueSize;
     if (store.windowWidth < 400) {
         valueSize = 16;
     } else if (isSmallScreen) {
         valueSize = 20;
+    } else if (store.windowWidth < 800 && finalText.length > 4) {
+        valueSize = 24;
     } else {
         valueSize = 32;
     }
@@ -484,7 +487,7 @@ const Gauge = ({
                     className={`leading-none tracking-tighter text-[${valueSize}px]`}
                     style={{ color: textColor || 'white' }}
                 >
-                    {value}{valueExtra}{textExtra || ""}
+                    {finalText}
                 </div>
                 <div
                     className={`mt-1 uppercase tracking-widest opacity-30 font-bold ${isSmallScreen ? 'text-[9px]' : 'text-[9px]'}`}
@@ -1447,7 +1450,11 @@ const Monitor = observer(() => {
                         </div>
                     </div>
 
-                    <div className="flex flex-col items-end justify-end text-right space-y-1 min-w-[200px]" style={{ marginTop: isSmallScreen ? -150 : -170 }}>
+                    <div className="flex flex-col items-end justify-end text-right space-y-1 min-w-[200px]" style={{
+                        marginTop: isSmallScreen ? -500 : -260,
+                        transform: isSmallScreen ? null : 'scale(180%)',
+                        transformOrigin: 'bottom right'
+                    }}>
                         <div
                             className="text-2xl font-bold tracking-tighter"
                             style={{ color: COLOR_STOPS[loadLevel].color }}
