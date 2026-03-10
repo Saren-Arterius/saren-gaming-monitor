@@ -413,6 +413,7 @@ const Gauge = ({
     if (className === "io") rawPct ** 0.5;
     let pct = rawPct * 75;
     if (pct > 75) pct = 75;
+    if (pct < 0) pct = 0;
     let iconColor = getColorAtPercent(pct / 0.75);
     let valueExtra = { usage: "%", temperature: "°C" }[className] || "";
     if (className === "io") value = formatBytes(value) + "/s";
