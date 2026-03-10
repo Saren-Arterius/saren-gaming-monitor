@@ -414,8 +414,9 @@ const Gauge = ({
     useEffect(() => {
         feather.replace();
     }, []);
-
-    let pct = ((value - min) / (max - min)) * 75;
+    let rawPct = (value - min) / (max - min);
+    if (className === "io") rawPct ** 0.5;
+    let pct = rawPct * 75;
     if (pct > 75) pct = 75;
     if (pct < 0.1) pct = 0.1;
     let iconColor = getColorAtPercent(pct / 0.75);
