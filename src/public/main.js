@@ -88,6 +88,8 @@ class Store {
     livingRoomLux = 100;
     livingRoomOccupied = true;
     bgImage = null;
+    // Debug flag for debug mode
+    debugOverrideStorageStatus = false;
 
     get livingRoomInfo() {
         return {
@@ -97,8 +99,7 @@ class Store {
     }
 
     get bgBrightness() {
-        const { lux } = this.livingRoomInfo;
-        return lux <= 1 ? 0 : 1;
+        return 1;
     }
 
     // Configuration Constants
@@ -236,6 +237,14 @@ class Store {
     }
 
     get mainUIBrightness() {
+        // If any storage shows ⚠️ or ⛔️, always return 1
+        for (let disk of Object.values(this.disks)) {
+            const storageData = this.storageInfo[disk.label];
+            if (storageData && storageData.info && storageData.info.status >= 1) {
+                return 1;
+            }
+        }
+        
         const timeSinceLastInteract = (Math.max(this.uiPollingTimestamp, Date.now()) - this.lastInteract) / 1000;
 
         // 1. If interaction is recent (<= 30s), keep brightness at 1
@@ -261,11 +270,22 @@ class Store {
 
     updateBrightness() {
         console.log('updateBrightness');
-        if (this.bgImage) {
-            if (this.bgImage.style.transition !== 'filter 1s linear') {
-                this.bgImage.style.transition = 'filter 1s linear';
+        // Check if any storage shows ⚠️ or ⛔️
+        let hasStorageWarning = false;
+        for (let disk of Object.values(this.disks)) {
+            const storageData = this.storageInfo[disk.label];
+            if (storageData && storageData.info && storageData.info.status >= 1) {
+                hasStorageWarning = true;
+                break;
             }
-            this.bgImage.style.filter = `brightness(${this.bgBrightness})`;
+        }
+
+        if (this.bgImage) {
+            if (hasStorageWarning) {
+                this.bgImage.style.backgroundColor = 'rgba(139, 0, 0, 0.3)'; // dark red
+            } else {
+                this.bgImage.style.backgroundColor = '';
+            }
         }
 
         if (this.mainUI) {
@@ -380,15 +400,16 @@ const ScrubMiniProgress = observer(({ storageKey, isSmallScreen }) => {
     return (
         <div
             style={{
-                width: isSmallScreen ? "100%" : "80%",
-                height: 4,
+                width: isSmallScreen ? "70%" : "100%",
+                height: 2,
                 backgroundColor: "rgba(255,255,255,0.1)",
                 borderRadius: 2,
                 marginTop: 4,
                 overflow: "hidden",
                 position: "absolute",
-                bottom: isSmallScreen ? -0 : -0,
-                left: isSmallScreen ? null : "10%"
+                bottom: isSmallScreen ? 8 : 8,
+                // left: isSmallScreen ? null : "10%",
+                opacity: 0.6
             }}
         >
             <div
@@ -1728,7 +1749,7 @@ const Monitor = observer(() => {
     const isUsingBackupNetwork = store.io.isUsingBackup;
 
     return (
-        <div className="min-h-screen bg-black text-white font-sans selection:bg-accent/30" style={{ width: '100%' }}>
+        <div id="monitor-container" className="min-h-screen bg-black text-white font-sans selection:bg-accent/30" style={{ width: '100%' }}>
             <div
                 className={`mx-auto p-2 md:p-8 transition-all duration-1000 space-y-4 ${isSmallLandscape ? "flex flex-wrap max-w-none" : "max-w-4xl"
                     }`}
@@ -2012,7 +2033,34 @@ let saveToMobxStore = (label) => (data) => {
     }
 };
 
-socket.on("storageInfo", saveToMobxStore("storageInfo"));
+// Debug method to override storageData.info.status as 1
+const overrideStorageStatus = (storageData) => {
+    if (!storageData || !storageData.info) return storageData;
+    console.log("Debug: Overriding storageData.info.status from", storageData.info.status, "to 1");
+    storageData.info.status = 2;
+    // Also update statusText to indicate debug mode
+    if (storageData.info.statusText) {
+        storageData.info.statusText = "[DEBUG] " + storageData.info.statusText;
+    }
+    return storageData;
+};
+
+// Debug handler that applies override after saveToMobxStore
+let debugSaveToMobxStore = (label) => (data) => {
+    try {
+        saveToMobxStore(label)(data);
+        // Apply debug override for storageInfo
+        if (label === "storageInfo" && store.debugOverrideStorageStatus) {
+            for (let key in store.storageInfo) {
+                store.storageInfo[key] = overrideStorageStatus(store.storageInfo[key]);
+            }
+        }
+    } catch (error) {
+        console.error(`Error processing ${label} with debug:`, error);
+    }
+};
+
+socket.on("storageInfo", debugSaveToMobxStore("storageInfo"));
 socket.on("initInfo", saveToMobxStore("initInfo"));
 socket.on("metrics", saveToMobxStore("metrics"));
 socket.on("networkMetrics", saveToMobxStore("networkMetrics"));
@@ -2995,9 +3043,9 @@ setInterval(() => {
     if (!store.mainUI) {
         store.mainUI = document.querySelector("html");
     }
-    // if (!store.bgImage) {
-    //     store.bgImage = document.getElementById("bg-image");
-    // }
+    if (!store.bgImage) {
+        store.bgImage = document.querySelector("#monitor-container");
+    }
 }, 1000);
 
 document.querySelector("html").addEventListener("click", (e) => {
