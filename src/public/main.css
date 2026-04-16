@@ -1,3 +1,12 @@
+html,
+body {
+    background-color: rgb(23, 16, 33);
+}
+
+body.is-embed {
+    background-color: #000000;
+}
+
 @layer base {
     body {
         @apply bg-black text-white font-sans antialiased;
@@ -34,10 +43,6 @@ dotlottie-player {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-body {
-    background-color: rgb(21, 10, 35);
-}
-
 #root {
     width: 100%;
     display: flex;
@@ -46,6 +51,144 @@ body {
     overflow-x: hidden;
 }
 
+.container {
+    width: calc(100vw - 40px);
+    max-width: 600px;
+}
+
+.section {
+    min-height: 200px;
+}
+
+.section-title {
+    font-weight: 500;
+    font-size: 1.2em;
+    margin-top: 10px;
+    margin-bottom: 10px;
+    color: #fff;
+    opacity: 0.9;
+}
+
+.gauge-container {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.gauge {
+    width: 150px;
+    height: 150px;
+}
+
+.gauge-body {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    position: relative;
+}
+
+.gauge-fill {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    transform: rotate(-135deg);
+    background: conic-gradient(#70CAD1 0%, #F7EE7F 37.5%, #A63D40 75%, transparent 0%);
+    filter: brightness(1.25);
+    z-index: 2;
+}
+
+.gauge-cover {
+    width: 75%;
+    height: 75%;
+    background: rgb(21, 10, 35);
+    border-radius: 50%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+}
+
+body.is-embed .gauge-cover {
+    background: #000000;
+}
+
+.gauge-cover-2 {
+    width: 105%;
+    height: 105%;
+    border-radius: 50%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-135deg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: conic-gradient(transparent 0deg, transparent var(--a), rgb(21, 10, 35) calc(var(--a) + 0.2%));
+    z-index: 2;
+    transition: --a 1s ease-out;
+}
+
+body.is-embed .gauge-cover-2 {
+    background: conic-gradient(transparent 0deg, transparent var(--a), #000000 calc(var(--a) + 0.2%));
+}
+
+
+.gauge-cover-outer {
+    border-radius: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.container::before {
+    content: '';
+    position: fixed;
+    /* backdrop-filter: blur(32px) brightness(3) saturate(2); */
+    opacity: 0.25;
+    z-index: 3;
+    inset: 0px;
+    height: 100%;
+    pointer-events: none;
+}
+
+@media screen and (max-width: 540px) {
+
+    /* Your CSS rules here */
+    .container::before {
+        /* backdrop-filter: blur(24px) brightness(3) saturate(2); */
+    }
+}
+
+@media screen and (max-height: 420px) {
+
+    /* Your CSS rules here */
+    .container::before {
+        /* backdrop-filter: blur(24px) brightness(3) saturate(2); */
+    }
+}
+
+
+.gauge-value {
+    color: white;
+    font-size: 2em;
+    font-weight: 600;
+    margin-top: 100px;
+    white-space: nowrap;
+    z-index: 2;
+}
+
+.gauge-label {
+    margin-top: -5px;
+    color: white;
+    font-size: 0.8em;
+    opacity: 0.5;
+    white-space: nowrap;
+    z-index: 2;
+}
 
 .chart {
     width: 100%;
@@ -55,6 +198,25 @@ body {
     margin-bottom: 15px;
 }
 
+.fan-speed {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 10px;
+    border-radius: 5px;
+}
+
+.feather {
+    width: 36px;
+    height: 36px;
+}
+
+.feather-wrapper {
+    z-index: 2;
+    position: absolute;
+    top: 52px;
+}
 
 dotlottie-player {
     transition: all 0.2s ease-in-out;
@@ -72,4 +234,95 @@ dotlottie-player {
     --color-accent: rgba(112, 202, 209, 0.1);
     --color-bg-secondary: rgba(255, 255, 255, 0.1);
     --border-radius: 8px;
+}
+
+th,
+td {
+    padding-left: 12px !important;
+}
+
+.embed-container {
+    width: 100vw;
+    height: 100vh;
+    padding: 4px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    background-color: #000000;
+    overflow: hidden;
+}
+
+.compact-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 4px;
+    flex-grow: 1;
+}
+
+.compact-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+}
+
+.compact-value {
+    font-size: 0.8em;
+    font-weight: bold;
+}
+
+.compact-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    justify-content: center;
+}
+
+.compact-icon {
+    width: 10px !important;
+    height: 10px !important;
+    opacity: 0.8;
+}
+
+.compact-bar-container {
+    flex-grow: 1;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+}
+
+.compact-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s ease;
+    background: linear-gradient(90deg, #70CAD1 0%, #F7EE7F 50%, #A63D40 100%);
+    background-size: var(--bg-size, 100%) 100%;
+    background-repeat: no-repeat;
+    filter: saturate(0.5);
+}
+
+.compact-label {
+    font-size: 0.6em;
+    opacity: 0.5;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+.compact-footer {
+    font-size: 0.65em;
+    opacity: 0.6;
+    text-align: center;
+    padding-top: 4px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    font-family: monospace;
+    white-space: nowrap;
 }

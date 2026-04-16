@@ -1160,7 +1160,7 @@ const Monitor = observer(() => {
         const gpuPwr = `${store.pwr.gpu} W`;
 
         return (
-            <div className="embed-container">
+            <div className="embed-container" class="min-h-screen bg-black text-white font-sans selection:bg-accent/30" style={{ "width": "100%" }}>
                 <StorageModalCompat />
                 <div className="compact-grid">
                     {/* Temperature */}
@@ -1225,7 +1225,7 @@ const Monitor = observer(() => {
     }
 
     return (
-        <>
+        <div class="min-h-screen text-white font-sans selection:bg-accent/30" style={{ "width": "100%" }}>
             {!IS_EMBED && <StorageModal />}
             <div
                 className={`mx-auto p-2 md:p-8 transition-all duration-1000 space-y-4 ${isSmallLandscape ? "flex flex-wrap max-w-none" : "max-w-4xl"
@@ -1425,34 +1425,8 @@ const Monitor = observer(() => {
 
                 {/* Fan & System Info Section */}
                 <div className={`flex ${isSmallLandscape ? "w-1/2 pl-4" : "w-full flex-col"} gap-4`}>
-                    <div className="flex-1">
-                        <div className="text-xs font-bold uppercase tracking-[0.2em] text-white/30 mb-2 flex items-center gap-2">
-                            Fan Speed
-                        </div>
-                        <div className="flex justify-between">
-                            <Gauge
-                                value={store.fanSpeed.cpu}
-                                max={store.GAUGE_LIMITS.fanSpeed.cpu.max}
-                                small={true}
-                                label="CPU RPM"
-                                className="fan"
-                                featherName="cpu"
-                            />
-                            <Gauge
-                                value={store.fanSpeed.motherboard}
-                                max={store.GAUGE_LIMITS.fanSpeed.motherboard.max}
-                                label="Motherboard"
-                                className="fan"
-                                small={true}
-                                featherName="server"
-                            />
-                            <div style={getGaugeSize(isSmallScreen, true)}></div>
-                            <div style={getGaugeSize(isSmallScreen, true)}></div>
-                        </div>
-                    </div>
-
                     <div className="flex flex-col items-end justify-end text-right space-y-1 min-w-[200px]" style={{
-                        marginTop: isSmallScreen ? -500 : -260,
+                        marginTop: isSmallScreen ? -150 : -120,
                         transform: isSmallScreen ? null : 'scale(180%)',
                         transformOrigin: 'bottom right'
                     }}>
@@ -1483,7 +1457,7 @@ const Monitor = observer(() => {
             )}
             <FullScreenStatus />
             <FullscreenButton />
-        </div >
+        </div>
     );
 });
 
