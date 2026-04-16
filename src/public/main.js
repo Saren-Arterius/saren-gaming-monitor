@@ -1673,7 +1673,8 @@ async function initPorcupine() {
             PORCUPINE_ACCESS_KEY,
             PORCUPINE_KEYWORDS,
             onPorcupineKeyword,
-            porcupineModel
+            porcupineModel,
+            { device: "cpu:4" }
         );
         console.log("Porcupine initialized with keywords:", PORCUPINE_KEYWORDS);
     } catch (error) {
