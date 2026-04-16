@@ -133,11 +133,13 @@ class Store {
         cpu: 34,
         gpu: 50,
         ram: 35,
-        vram: 35
+        vram: 35,
+        swap: 30
     };
     usageMB = {
         ram: 16384,
-        vram: 10240
+        vram: 10240,
+        swap: 22000
     };
     disks = {};
     io = {
@@ -1327,6 +1329,15 @@ const Monitor = observer(() => {
                             label="VRAM"
                             className="usage"
                             featherName="monitor"
+                            small
+                        />
+                        <Gauge
+                            value={store.usage.swap || 0}
+                            valueMB={store.usageMB.swap}
+                            max={100}
+                            label="Swap"
+                            className="usage"
+                            featherName="hard-drive"
                             small
                         />
                     </div>

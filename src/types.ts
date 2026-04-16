@@ -43,11 +43,15 @@ export interface SystemMetrics {
         gpu?: number;
         ram: number;
         vram?: number;
+        swap?: number;
     };
     usageMB: {
         ram: number;
         vram?: number;
+        swap?: number;
     };
+    swapTotal: number;
+    swapUsed: number;
     io: {
         diskRead: number;
         diskWrite: number;

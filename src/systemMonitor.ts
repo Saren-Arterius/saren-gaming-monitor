@@ -170,6 +170,13 @@ export class SystemMonitor {
         let memUsed = total - avail;
         let memUsage = memUsed / total;
 
+        // Swap metrics
+        const swapTotalKB = parseFloat(data.meminfo.find((line: string) => line.startsWith('SwapTotal:'))?.split(/\s+/)[1] || '0');
+        const swapFreeKB = parseFloat(data.meminfo.find((line: string) => line.startsWith('SwapFree:'))?.split(/\s+/)[1] || '0');
+        const swapTotal = swapTotalKB / 1024; // Convert to MB
+        const swapUsed = (swapTotalKB - swapFreeKB) / 1024; // Convert to MB
+        const swapUsage = swapTotal > 0 ? (swapUsed / swapTotal) * 100 : 0;
+
         let cpuMhzs = data.cpuinfo.filter((l: string) => l.startsWith('cpu MHz')).map((s: string) => parseFloat(s.split(':')[1]));
 
         if (cpuMhzs.length === 0 && data.cpupower) {
@@ -279,12 +286,16 @@ export class SystemMonitor {
                 cpu: 0,
                 gpu: parseInt(data.gpu[2]),
                 ram: Math.round(memUsage * 100),
-                vram: Math.round((data.vramUsed / total) * 100)
+                vram: Math.round((data.vramUsed / total) * 100),
+                swap: Math.round(swapUsage)
             },
             usageMB: {
                 ram: Math.round(memUsed),
-                vram: data.vramUsed
+                vram: data.vramUsed,
+                swap: Math.round(swapUsed)
             },
+            swapTotal: Math.round(swapTotal),
+            swapUsed: Math.round(swapUsed),
             io: {
                 diskRead: totalDiskRead,
                 diskWrite: totalDiskWrite,
