@@ -1382,7 +1382,7 @@ window.addEventListener("resize", () => {
 // Global state variables
 let myvad = null;
 let haWebSocket = null;
-let bumblebee = null;
+let porcupine = null;
 
 let currentMessageId = 0;
 let pipelineActive = false; // Still useful to indicate active HA pipeline communication
@@ -1499,8 +1499,8 @@ function setVAState(newState, ...args) {
                 })();
             }
 
-            if (bumblebee) {
-                bumblebee.start();
+            if (porcupine) {
+                startPorcupine();
             }
             break;
 
@@ -1658,6 +1658,44 @@ function getHAPipelineName() {
     return getConfigValue("pipeline_name", "ha_pipeline_name");
 }
 
+// --- Porcupine Hotword Detection ---
+const PORCUPINE_ACCESS_KEY = "UExBQ0VIT0xERVJfQUNDRVNTX0tFWQo="; // PLACEHOLDER_ACCESS_KEY
+
+const PORCUPINE_KEYWORDS = [
+    "Jarvis",
+    "Porcupine",
+    { label: "Ding Dong", base64: dingdong }
+];
+
+async function initPorcupine() {
+    try {
+        porcupine = await PorcupineWeb.PorcupineWorker.create(
+            PORCUPINE_ACCESS_KEY,
+            PORCUPINE_KEYWORDS,
+            onPorcupineKeyword,
+            porcupineModel
+        );
+        console.log("Porcupine initialized with keywords:", PORCUPINE_KEYWORDS);
+    } catch (error) {
+        console.error("Failed to create Porcupine instance:", error);
+        throw error;
+    }
+}
+
+async function startPorcupine() {
+    if (window.WebVoiceProcessor && window.WebVoiceProcessor.WebVoiceProcessor) {
+        await window.WebVoiceProcessor.WebVoiceProcessor.subscribe(porcupine);
+        console.log("Porcupine listening for keywords");
+    }
+}
+
+function onPorcupineKeyword(detection) {
+    const time = new Date();
+    const keyword = detection.label || detection.index;
+    console.log(`Keyword detected at ${time.toLocaleTimeString()}: ${keyword}`);
+    handleHotword({ hotword: keyword, index: detection.index });
+}
+
 // --- Main Application Initialization ---
 async function initializeApp() {
     setVAState(STATE.INITIALIZING); // Set initial state
@@ -1680,15 +1718,9 @@ async function initializeApp() {
     }
     console.log("HA Token and Pipeline Name found.");
     try {
-        bumblebee = new Bumblebee();
-        bumblebee.setWorkersPath("/vendor/bumblebee/workers");
-        bumblebee.addHotword("jarvis");
-        bumblebee.addHotword("bumblebee");
-        bumblebee.setSensitivity(0.3);
-        bumblebee.on("hotword", handleHotword);
-        console.log("Bumblebee initialized.");
+        await initPorcupine();
     } catch (error) {
-        console.error("Failed to initialize Bumblebee:", error);
+        console.error("Failed to initialize Porcupine:", error);
         panelAlert("Error initializing hotword engine: " + error.message);
         return;
     }
@@ -1708,18 +1740,9 @@ async function initializeApp() {
     } catch (error) {
         console.error("Failed to establish initial HA connection or init VAD:", error);
         panelAlert("Could not connect to Home Assistant or init voice: " + error.message);
-        // Allow Bumblebee to start; hotword might trigger successful connection
+        // Allow Porcupine to start; hotword might trigger successful connection
     }
 
-    if (bumblebee) {
-        try {
-            await bumblebee.start();
-            console.log("Bumblebee listening for hotword.");
-        } catch (error) {
-            console.error("Failed to start Bumblebee listening:", error);
-            panelAlert("Failed to start hotword detection: " + error.message);
-        }
-    }
     setVAState(STATE.IDLE); // Transition to IDLE if all critical steps passed or are recoverable
     console.log("Application initialized. Current state: IDLE");
 }
@@ -1743,7 +1766,7 @@ function resetAll(notify = true) {
 async function handleHotword(hotwordDetails) {
     const hotword = typeof hotwordDetails === "string" ? hotwordDetails : hotwordDetails.hotword;
     console.log(`Hotword '${hotword}' detected. Current state: ${getStateName(store.vaState)}.`);
-    if (hotword === "bumblebee") {
+    if (hotword === "Porcupine") {
         resetAll();
         return;
     }
