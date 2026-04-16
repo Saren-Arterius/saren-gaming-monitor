@@ -440,8 +440,9 @@ const Gauge = ({
     useEffect(() => {
         feather.replace();
     }, []);
-
-    let pct = ((value - min) / (max - min)) * 75;
+    let rawPct = (value - min) / (max - min);
+    if (className === "io") rawPct ** 0.5;
+    let pct = rawPct * 75;
     if (pct > 75) pct = 75;
     let iconColor = getColorAtPercent(pct / 0.75);
     let valueExtra = { usage: "%", temperature: "°C" }[className] || "";
@@ -1182,8 +1183,12 @@ const CompactItem = ({ value, valueRaw, max, label, featherName, unit = "%", col
     if (typeof numericValue === 'string') {
         numericValue = parseFloat(numericValue);
     }
-    const pct = Math.min(100, (numericValue / max) * 100);
-
+    let pct;
+    if (unit.endsWith('/s')) {
+        pct = Math.min(100, ((numericValue / max) ** 0.5) * 100);
+    } else {
+        pct = Math.min(100, (numericValue / max) * 100);
+    }
     return (
         <div className="compact-item">
             <div className="compact-value" style={{ color }}>
@@ -1262,14 +1267,14 @@ const Monitor = observer(() => {
                     <CompactItem value={store.usage.vram} max={100} label="VRAM" featherName="monitor" extra={`${store.usageMB.vram} MB`} />
 
                     {/* I/O */}
-                    <CompactItem value={formatBytes(store.io.diskRead)} valueRaw={store.io.diskRead} max={store.GAUGE_LIMITS.io.diskRead.max} label="System Read" featherName="hard-drive" unit="/s" />
-                    <CompactItem value={formatBytes(store.io.diskWrite)} valueRaw={store.io.diskWrite} max={store.GAUGE_LIMITS.io.diskWrite.max} label="System Write" featherName="activity" unit="/s" />
+                    <CompactItem value={formatBytes(store.io.diskRead)} valueRaw={store.io.diskRead} max={store.GAUGE_LIMITS.io.diskRead.max} label="System Read" featherName="book-open" unit="/s" />
+                    <CompactItem value={formatBytes(store.io.diskWrite)} valueRaw={store.io.diskWrite} max={store.GAUGE_LIMITS.io.diskWrite.max} label="System Write" featherName="edit-3" unit="/s" />
                     <CompactItem
                         value={formatBytes(store.io.networkRx)}
                         valueRaw={store.io.networkRx}
                         max={store.GAUGE_LIMITS.io.networkRx.max}
                         label="Network RX"
-                        featherName="globe"
+                        featherName="download"
                         unit="/s"
                         extra={formatBytes(store.io.networkPacketsRx, 1, "PPS")}
                     />
@@ -1278,7 +1283,7 @@ const Monitor = observer(() => {
                         valueRaw={store.io.networkTx}
                         max={store.GAUGE_LIMITS.io.networkTx.max}
                         label="Network TX"
-                        featherName="globe"
+                        featherName="upload"
                         unit="/s"
                         extra={formatBytes(store.io.networkPacketsTx, 1, "PPS")}
                     />
