@@ -1662,9 +1662,9 @@ function getHAPipelineName() {
 const PORCUPINE_ACCESS_KEY = "UExBQ0VIT0xERVJfQUNDRVNTX0tFWQo="; // PLACEHOLDER_ACCESS_KEY
 
 const PORCUPINE_KEYWORDS = [
-    "Jarvis",
+    { builtin: "Jarvis", sensitivity: 0.3 },
     "Porcupine",
-    { label: "Ding Dong", base64: dingdong }
+    // { label: "Ding Dong", base64: dingdong }
 ];
 
 async function initPorcupine() {
@@ -1674,7 +1674,7 @@ async function initPorcupine() {
             PORCUPINE_KEYWORDS,
             onPorcupineKeyword,
             porcupineModel,
-            { device: "cpu:4" }
+            { device: "best" }
         );
         console.log("Porcupine initialized with keywords:", PORCUPINE_KEYWORDS);
     } catch (error) {
@@ -1691,6 +1691,10 @@ async function startPorcupine() {
 }
 
 function onPorcupineKeyword(detection) {
+    if (detection.index > 10) {
+        console.warn('Bug', detection);
+        return;
+    }
     const time = new Date();
     const keyword = detection.label || detection.index;
     console.log(`Keyword detected at ${time.toLocaleTimeString()}: ${keyword}`);
