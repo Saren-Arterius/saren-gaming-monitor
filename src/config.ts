@@ -23,6 +23,12 @@ export const CONFIG = {
                 networkRx: { max: 12.5 * 1024 * 1024 * 1024 },
                 networkTx: { max: 12.5 * 1024 * 1024 * 1024 },
             },
+            vllm: {
+                prefillTokensPerSecond: { max: 3000 },
+                generationTokensPerSecond: { max: 60 },
+                numRequestsRunning: { max: 8 },
+                numRequestsWaiting: { max: 20 }
+            }
         },
     },
     // lm_sensors json output, See `sensors -j`
@@ -109,6 +115,9 @@ export const CONFIG = {
                 "tempInput": "temp1_input"
             }
         }
+    },
+    vllm: {
+        metricsUrl: 'http://100.64.0.8:8000/metrics'
     }
 };
 

@@ -3,9 +3,11 @@ import { Server as Engine } from "@socket.io/bun-engine";
 import path from 'path';
 import { CONFIG } from './config';
 import { SystemMonitor } from './systemMonitor';
+import { VLLMMonitor } from './vllmMonitor';
 export class AppServer {
     private io;
     private systemMonitor = new SystemMonitor();
+    private vllmMonitor = new VLLMMonitor();
     private engine: Engine;
 
     constructor() {
@@ -61,6 +63,7 @@ export class AppServer {
             socket.emit('initInfo', CONFIG.initInfo);
             socket.emit('metrics', this.systemMonitor.getMetrics());
             socket.emit('storageInfo', { storageInfo: this.systemMonitor.getStorageInfo() });
+            socket.emit('vllmMetrics', this.vllmMonitor.getMetrics());
 
             socket.on('disconnect', () => {
                 console.log('Client disconnected:', socket.id);
@@ -72,8 +75,10 @@ export class AppServer {
         (async () => {
             const metrics = await this.systemMonitor.updateMetrics();
             const storageInfo = await this.systemMonitor.updateStorageInfo();
+            const vllmMetrics = await this.vllmMonitor.updateMetrics();
             console.log(metrics);
             console.log(JSON.stringify(storageInfo, null, 2));
+            console.log(vllmMetrics);
         })();
 
         setInterval(async () => {
@@ -86,6 +91,10 @@ export class AppServer {
             console.log(storageInfo);
             this.io.emit('storageInfo', { storageInfo });
         }, 5000);
+        setInterval(async () => {
+            const vllmMetrics = await this.vllmMonitor.updateMetrics();
+            this.io.emit('vllmMetrics', { vllmMetrics });
+        }, 2000);
     }
 
     start() {

@@ -142,6 +142,13 @@ class Store {
         swap: 22000
     };
     disks = {};
+    vllmMetrics = {
+        prefillTokensPerSecond: 0,
+        generationTokensPerSecond: 0,
+        numRequestsRunning: 0,
+        numRequestsWaiting: 0,
+        lastUpdate: 0
+    };
     io = {
         diskRead: 10000,
         diskWrite: 10000,
@@ -417,7 +424,7 @@ const Gauge = ({
     if (pct > 75) pct = 75;
     if (pct < 0) pct = 0;
     let iconColor = getColorAtPercent(pct / 0.75);
-    let valueExtra = { usage: "%", temperature: "°C" }[className] || "";
+    let valueExtra = { usage: "%", temperature: "°C", tokens: " t/s"}[className] || "";
     if (className === "io") value = formatBytes(value) + "/s";
 
     let isSmallScreen = store.windowWidth < SMALL_WIDTH || store.windowHeight < SMALL_HEIGHT;
@@ -1210,6 +1217,36 @@ const Monitor = observer(() => {
                         unit="/s"
                         extra={formatBytes(store.io.networkPacketsTx, 1, "PPS")}
                     />
+                    <CompactItem
+                        value={store.vllmMetrics?.prefillTokensPerSecond || 0}
+                        valueRaw={store.vllmMetrics?.prefillTokensPerSecond || 0}
+                        max={store.initInfo?.GAUGE_LIMITS?.vllm?.prefillTokensPerSecond?.max || 3000}
+                        label="VLLM Prefill"
+                        featherName="zap"
+                        unit="/s"
+                    />
+                    <CompactItem
+                        value={store.vllmMetrics?.generationTokensPerSecond || 0}
+                        valueRaw={store.vllmMetrics?.generationTokensPerSecond || 0}
+                        max={store.initInfo?.GAUGE_LIMITS?.vllm?.generationTokensPerSecond?.max || 60}
+                        label="VLLM Generation"
+                        featherName="cpu"
+                        unit="/s"
+                    />
+                    <CompactItem
+                        value={store.vllmMetrics?.numRequestsRunning || 0}
+                        valueRaw={store.vllmMetrics?.numRequestsRunning || 0}
+                        max={store.initInfo?.GAUGE_LIMITS?.vllm?.numRequestsRunning?.max || 8}
+                        label="VLLM Running"
+                        featherName="play"
+                    />
+                    <CompactItem
+                        value={store.vllmMetrics?.numRequestsWaiting || 0}
+                        valueRaw={store.vllmMetrics?.numRequestsWaiting || 0}
+                        max={store.initInfo?.GAUGE_LIMITS?.vllm?.numRequestsWaiting?.max || 20}
+                        label="VLLM Waiting"
+                        featherName="clock"
+                    />
                 </div>
                 <div className="compact-footer">
                     <span
@@ -1434,10 +1471,51 @@ const Monitor = observer(() => {
                     </div>
                 </div>
 
+                {/* VLLM Section */}
+                <div className={`flex flex-col ${isSmallLandscape ? "w-1/2 pl-4" : "w-full"}`}>
+                    <div className="text-xs font-bold uppercase tracking-[0.2em] text-white/30 mb-2 flex items-center gap-2">
+                        VLLM
+                    </div>
+                    <div className="flex justify-between">
+                        <Gauge
+                            value={store.vllmMetrics?.prefillTokensPerSecond || 0}
+                            max={store.initInfo?.GAUGE_LIMITS?.vllm?.prefillTokensPerSecond?.max || 3000}
+                            label="Prefill"
+                            className="tokens"
+                            featherName="zap"
+                            small
+                        />
+                        <Gauge
+                            value={store.vllmMetrics?.generationTokensPerSecond || 0}
+                            max={store.initInfo?.GAUGE_LIMITS?.vllm?.generationTokensPerSecond?.max || 60}
+                            label="Generation"
+                            className="tokens"
+                            featherName="cpu"
+                            small
+                        />
+                        <Gauge
+                            value={store.vllmMetrics?.numRequestsRunning || 0}
+                            max={store.initInfo?.GAUGE_LIMITS?.vllm?.numRequestsRunning?.max || 8}
+                            label="Running"
+                            className="requests"
+                            featherName="play"
+                            small
+                        />
+                        <Gauge
+                            value={store.vllmMetrics?.numRequestsWaiting || 0}
+                            max={store.initInfo?.GAUGE_LIMITS?.vllm?.numRequestsWaiting?.max || 20}
+                            label="Waiting"
+                            className="requests"
+                            featherName="clock"
+                            small
+                        />
+                    </div>
+                </div>
+
                 {/* Fan & System Info Section */}
                 <div className={`flex ${isSmallLandscape ? "w-1/2 pl-4" : "w-full flex-col"} gap-4`}>
                     <div className="flex flex-col items-end justify-end text-right space-y-1 min-w-[200px]" style={{
-                        marginTop: isSmallScreen ? -150 : -120,
+                        marginTop: isSmallScreen ? -280 : -310,
                         transform: isSmallScreen ? null : 'scale(180%)',
                         transformOrigin: 'bottom right'
                     }}>
@@ -1543,6 +1621,7 @@ let saveToMobxStore = (label) => (data) => {
 socket.on("storageInfo", saveToMobxStore("storageInfo"));
 socket.on("initInfo", saveToMobxStore("initInfo"));
 socket.on("metrics", saveToMobxStore("metrics"));
+socket.on("vllmMetrics", saveToMobxStore("vllmMetrics"));
 
 socket.on("connect", () => console.log("Connected to server"));
 

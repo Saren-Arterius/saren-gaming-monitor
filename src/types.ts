@@ -184,3 +184,11 @@ export interface StorageInfoMap {
         info: StorageHealthInfo;
     };
 }
+
+export interface VLLMMetrics {
+    prefillTokensPerSecond: number;
+    generationTokensPerSecond: number;
+    numRequestsRunning: number;
+    numRequestsWaiting: number;
+    lastUpdate: number;
+}
