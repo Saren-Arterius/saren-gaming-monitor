@@ -1223,7 +1223,7 @@ const Monitor = observer(() => {
                         max={store.initInfo?.GAUGE_LIMITS?.vllm?.prefillTokensPerSecond?.max || 3000}
                         label="VLLM Prefill"
                         featherName="zap"
-                        unit="/s"
+                        unit=" t/s"
                     />
                     <CompactItem
                         value={store.vllmMetrics?.generationTokensPerSecond || 0}
@@ -1231,7 +1231,7 @@ const Monitor = observer(() => {
                         max={store.initInfo?.GAUGE_LIMITS?.vllm?.generationTokensPerSecond?.max || 60}
                         label="VLLM Generation"
                         featherName="cpu"
-                        unit="/s"
+                        unit=" t/s"
                     />
                     <CompactItem
                         value={store.vllmMetrics?.numRequestsRunning || 0}
@@ -1239,6 +1239,7 @@ const Monitor = observer(() => {
                         max={store.initInfo?.GAUGE_LIMITS?.vllm?.numRequestsRunning?.max || 8}
                         label="VLLM Running"
                         featherName="play"
+                        unit=""
                     />
                     <CompactItem
                         value={store.vllmMetrics?.numRequestsWaiting || 0}
@@ -1246,6 +1247,7 @@ const Monitor = observer(() => {
                         max={store.initInfo?.GAUGE_LIMITS?.vllm?.numRequestsWaiting?.max || 20}
                         label="VLLM Waiting"
                         featherName="clock"
+                        unit=""
                     />
                 </div>
                 <div className="compact-footer">
