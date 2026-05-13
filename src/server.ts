@@ -5,12 +5,14 @@ import { CONFIG } from './config';
 import { SystemMonitor } from './systemMonitor';
 import { IOTMonitor } from './iotMonitor';
 import { InternetMonitor } from './internetMonitor';
+import { LanMonitor, RateHostResult } from './lanMonitor';
 
 export class AppServer {
     private io;
     private systemMonitor = new SystemMonitor();
     private iotMonitor = new IOTMonitor();
     private internetMonitor = new InternetMonitor();
+    private lanMonitor = new LanMonitor();
     private engine: Engine;
 
     constructor() {
@@ -56,6 +58,7 @@ export class AppServer {
                 const host = req.headers.get('host');
                 const includeIPHistory = host === CONFIG.server.trustedHost;
                 let networkMetrics = this.systemMonitor.getNetworkMetricsPartial(includeIPHistory);
+                const lanInfo = this.lanMonitor.getCachedData();
 
                 if (isLite && networkMetrics) {
                     // Create a shallow copy to prevent modifying the cached reference if applicable
@@ -74,6 +77,7 @@ export class AppServer {
                     metrics,
                     networkMetrics,
                     storageInfo,
+                    lanInfo,
                     ...(!isLite && {
                         iotMetrics: this.iotMonitor.getCachedData(),
                         internetMetrics: this.internetMonitor.getCachedData()
@@ -108,6 +112,7 @@ export class AppServer {
 
             socket.emit('initInfo', CONFIG.initInfo);
             socket.emit('metrics', this.systemMonitor.getMetrics());
+            socket.emit('lanInfo', this.lanMonitor.getCachedData());
             socket.emit('storageInfo', { storageInfo: this.systemMonitor.getStorageInfo() });
             socket.emit('networkMetrics', {
                 networkMetrics: this.systemMonitor.getNetworkMetricsPartial(isTrusted),
@@ -123,7 +128,9 @@ export class AppServer {
     private setupMonitoring() {
         this.iotMonitor.start().catch(e => console.error("Failed to start IOTMonitor", e));
         this.internetMonitor.start().catch(e => console.error("Failed to start InternetMonitor", e));
-
+        this.lanMonitor.start((data: RateHostResult[]) => {
+            this.io.emit('lanInfo', data);
+        });
         (async () => {
             const metrics = await this.systemMonitor.updateMetrics();
             const networkMetrics = await this.systemMonitor.updateNetworkMetrics();
