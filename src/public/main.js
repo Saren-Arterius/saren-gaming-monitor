@@ -1951,7 +1951,7 @@ const Monitor = observer(() => {
                 <div className="relative w-full rounded-2xl overflow-hidden" style={{ marginLeft: -10, width: 'calc(100% + 20px)' }}>
                     <iframe
                         src={`https://magi-monitor${location.host.includes('-ts') ? '-ts' : ''}.wtako.net/?embed=1`}
-                        className="w-full h-[210px] border-0"
+                        className="w-full h-[255px] border-0"
                     ></iframe>
                 </div>
             </div>
