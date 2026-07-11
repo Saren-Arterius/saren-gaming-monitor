@@ -4,10 +4,13 @@ import path from 'path';
 import { CONFIG } from './config';
 import { SystemMonitor } from './systemMonitor';
 import { VLLMMonitor } from './vllmMonitor';
+import { AIGlobalHealth } from './aiHealth';
+
 export class AppServer {
     private io;
     private systemMonitor = new SystemMonitor();
     private vllmMonitor = new VLLMMonitor();
+    private aiHealth = new AIGlobalHealth();
     private engine: Engine;
 
     constructor() {
@@ -37,10 +40,12 @@ export class AppServer {
             try {
                 const metrics = this.systemMonitor.getMetrics();
                 const storageInfo = this.systemMonitor.getStorageInfo();
+                const aiHealth = this.aiHealth.getHealth();
                 return Response.json({
                     info: CONFIG.initInfo,
                     metrics,
-                    storageInfo
+                    storageInfo,
+                    aiHealth
                 });
             } catch (error) {
                 return Response.json({ error: 'Failed to fetch system metrics' }, { status: 500 });
@@ -64,6 +69,7 @@ export class AppServer {
             socket.emit('metrics', this.systemMonitor.getMetrics());
             socket.emit('storageInfo', { storageInfo: this.systemMonitor.getStorageInfo() });
             socket.emit('vllmMetrics', this.vllmMonitor.getMetrics());
+            socket.emit('aiHealth', { aiHealth: this.aiHealth.getHealth() });
 
             socket.on('disconnect', () => {
                 console.log('Client disconnected:', socket.id);
@@ -76,9 +82,11 @@ export class AppServer {
             const metrics = await this.systemMonitor.updateMetrics();
             const storageInfo = await this.systemMonitor.updateStorageInfo();
             const vllmMetrics = await this.vllmMonitor.updateMetrics();
+            const aiHealth = await this.aiHealth.updateHealth();
             console.log(metrics);
             console.log(JSON.stringify(storageInfo, null, 2));
             console.log(vllmMetrics);
+            console.log(aiHealth);
         })();
 
         setInterval(async () => {
@@ -94,7 +102,11 @@ export class AppServer {
         setInterval(async () => {
             const vllmMetrics = await this.vllmMonitor.updateMetrics();
             this.io.emit('vllmMetrics', { vllmMetrics });
-        }, 2000);
+        }, 1000);
+        setInterval(async () => {
+            await this.aiHealth.updateHealth();
+            this.io.emit('aiHealth', { aiHealth: this.aiHealth.getHealth() });
+        }, 5000);
     }
 
     start() {

@@ -25,8 +25,8 @@ export const CONFIG = {
             },
             vllm: {
                 prefillTokensPerSecond: { max: 3000 },
-                generationTokensPerSecond: { max: 60 },
-                numRequestsRunning: { max: 8 },
+                generationTokensPerSecond: { max: 100 },
+                numRequestsRunning: { max: 3 },
                 numRequestsWaiting: { max: 20 }
             }
         },

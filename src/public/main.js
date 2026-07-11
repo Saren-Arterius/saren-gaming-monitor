@@ -149,6 +149,11 @@ class Store {
         numRequestsWaiting: 0,
         lastUpdate: 0
     };
+    aiHealth = {
+        thinking_brain: {},
+        speaking_lips: {},
+        listening_ears: {}
+    };
     io = {
         diskRead: 10000,
         diskWrite: 10000,
@@ -1259,7 +1264,9 @@ const Monitor = observer(() => {
                         }}
                     >
                         {store.SYSTEM_INFO.hostname}
-                    </span> · {store.SYSTEM_INFO.cpu} · {store.system?.split('|').join('·')}
+                    </span> · {store.SYSTEM_INFO.cpu} · {store.system?.split('|').join('·')} · <span style={{opacity: store.aiHealth?.thinking_brain?.healthy ? 1 : 0.2}}>🧠</span>
+                    <span style={{opacity: store.aiHealth?.speaking_lips?.healthy ? 1 : 0.2}}>👄</span>
+                    <span style={{opacity: store.aiHealth?.listening_ears?.healthy ? 1 : 0.2}}>🦻</span>
                 </div>
             </div>
         );
@@ -1624,6 +1631,7 @@ socket.on("storageInfo", saveToMobxStore("storageInfo"));
 socket.on("initInfo", saveToMobxStore("initInfo"));
 socket.on("metrics", saveToMobxStore("metrics"));
 socket.on("vllmMetrics", saveToMobxStore("vllmMetrics"));
+socket.on("aiHealth", saveToMobxStore("aiHealth"));
 
 socket.on("connect", () => console.log("Connected to server"));
 
