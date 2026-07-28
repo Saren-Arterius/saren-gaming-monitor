@@ -5,7 +5,7 @@ import { CONFIG } from './config';
 import { SystemMonitor } from './systemMonitor';
 import { IOTMonitor } from './iotMonitor';
 import { InternetMonitor } from './internetMonitor';
-import { LanMonitor, RateHostResult } from './lanMonitor';
+import { LanMonitor, RateHostResult, TransformedRealTimeRate } from './lanMonitor';
 
 export class AppServer {
     private io;
@@ -112,7 +112,7 @@ export class AppServer {
 
             socket.emit('initInfo', CONFIG.initInfo);
             socket.emit('metrics', this.systemMonitor.getMetrics());
-            socket.emit('lanInfo', this.lanMonitor.getCachedData());
+            socket.emit('lanInfo', {lanInfo: this.lanMonitor.getCachedData()});
             socket.emit('storageInfo', { storageInfo: this.systemMonitor.getStorageInfo() });
             socket.emit('networkMetrics', {
                 networkMetrics: this.systemMonitor.getNetworkMetricsPartial(isTrusted),
@@ -128,8 +128,8 @@ export class AppServer {
     private setupMonitoring() {
         this.iotMonitor.start().catch(e => console.error("Failed to start IOTMonitor", e));
         this.internetMonitor.start().catch(e => console.error("Failed to start InternetMonitor", e));
-        this.lanMonitor.start((data: RateHostResult[]) => {
-            this.io.emit('lanInfo', data);
+        this.lanMonitor.start((lanInfo: TransformedRealTimeRate) => {
+            this.io.emit('lanInfo', {lanInfo});
         });
         (async () => {
             const metrics = await this.systemMonitor.updateMetrics();
