@@ -234,8 +234,8 @@ async function pollHttpOnce(host: HostConfig): Promise<HttpData[] | null> {
 
     return interfaceNames.map((name, i) => ({
       name,
-      rx_bps: Math.floor((rxRate[i * 2] + rxRate[i * 2 + 1] / 100) * 1024 * 1024),
-      tx_bps: Math.floor((txRate[i * 2] + txRate[i * 2 + 1] / 100) * 1024 * 1024),
+      rx_bps: Math.floor((rxRate[i * 2] + rxRate[i * 2 + 1] / 100) * 1024 * 1024 / 8),
+      tx_bps: Math.floor((txRate[i * 2] + txRate[i * 2 + 1] / 100) * 1024 * 1024 / 8),
     }));
   } catch {
     return null;
@@ -372,7 +372,7 @@ function printRateTable(results: RateHostResult[]) {
   }
 }
 
-type TransformedRealTimeRate = Record<string, {label?: string, interfaces: Record<string, {rx_bps: number, tx_bps: number}>}>;
+export type TransformedRealTimeRate = Record<string, {label?: string, interfaces: Record<string, {rx_bps: number, tx_bps: number}>}>;
 
 export class LanMonitor {
 
