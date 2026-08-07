@@ -491,7 +491,7 @@ const Gauge = ({
                 </div>
                 <div
                     className={`leading-none tracking-tighter text-[${valueSize}px]`}
-                    style={{ color: textColor || 'white' }}
+                    style={{ color: textColor || 'white', textShadow: '0px 1px 4px #000, 0px 1px 4px #000' }}
                 >
                     {finalText}
                 </div>
@@ -651,7 +651,8 @@ const fullScreenOverlayStyle = {
     position: "fixed",
     width: "100%",
     height: "100%",
-    backgroundColor: "#232323a0",
+    // backgroundColor: "#232323a0",
+    backgroundColor: "#0f1316e5",
     backdropFilter: "blur(4px) brightness(0.65)",
     display: "flex",
     flexDirection: "column",
@@ -962,7 +963,7 @@ const AlertOverlay = observer(() => {
                 width: "100%",
                 height: "100%",
                 position: "fixed",
-                zIndex: 6,
+                zIndex: 20,
                 alignItems: "center",
                 justifyContent: "center",
                 backdropFilter: "blur(4px) brightness(0.65)",
@@ -1603,17 +1604,21 @@ function setVAState(newState, ...args) {
 
             console.log("STATE.PLAYING_TTS: Playing TTS from URL:", ttsUrl);
             ttsAudioElement = new Audio(ttsUrl);
+            ttsAudioElement.volume = 1;
             if (store.lastTTSLength > 20) {
-                ttsAudioElement.playbackRate = 1.5; // Set playback speed to 1.5x
+                // ttsAudioElement.playbackRate = 1.5; // Set playback speed to 1.5x
             } else {
-                ttsAudioElement.playbackRate = 1.25;
+                // ttsAudioElement.playbackRate = 1.25;
             }
             ttsAudioElement.onended = () => {
                 console.log("TTS playback naturally ended.");
                 ttsAudioElement = null;
-                if (store.vaState === STATE.PLAYING_TTS) {
-                    setVAState(STATE.WAKE_WORD_TRIGGERED);
-                }
+                setTimeout(() => {
+                    if (store.vaState === STATE.PLAYING_TTS) {
+                        setVAState(STATE.WAKE_WORD_TRIGGERED);
+                    }
+                }, 500);
+
             };
             ttsAudioElement.onerror = (e) => {
                 console.error("Error playing TTS audio:", e);
