@@ -532,7 +532,7 @@ const Gauge = ({
                 </div>
                 <div
                     className={`leading-none tracking-tighter text-[${valueSize}px]`}
-                    style={{ color: textColor || 'white' }}
+                    style={{ color: textColor || 'white', textShadow: '0px 1px 4px #000, 0px 1px 4px #000' }}
                 >
                     {value}{valueExtra}{textExtra || ""}
                 </div>
@@ -2776,7 +2776,8 @@ async function lastTTSAnimation(newText) {
 function updateState(state) {
     if (!state) return;
     const entityId = state.entity_id;
-    if (entityId === "binary_sensor.human_presence_sensor_e235_occupancy") {
+    // if (entityId.startsWith('binary_sensor.')) console.log(entityId);
+    if (entityId === "binary_sensor.ke_ting_human_presence_sensor_kao_chuang_occupancy") {
         store.livingRoomOccupied = state.state === "on";
         store.updateBrightness();
         console.log({ state })
