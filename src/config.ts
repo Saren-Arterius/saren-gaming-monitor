@@ -47,8 +47,8 @@ export const CONFIG = {
             },
             cpu: {
                 controller: 'nct6687-isa-0a20',
-                id: 'fan1',
-                input: 'fan1_input'
+                id: 'fan2',
+                input: 'fan2_input'
             },
             systemSSD: null
         }

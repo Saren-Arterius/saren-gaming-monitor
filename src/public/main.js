@@ -1496,7 +1496,7 @@ function setVAState(newState, ...args) {
 
             if (oldState >= STATE.WAKE_WORD_TRIGGERED) {
                 (async () => {
-                    (await fetchAndCacheAudio(BASE + "/cancel.mp3")).play().catch((e) => console.error("Error playing cancel.mp3:", e));
+                    // (await fetchAndCacheAudio(BASE + "/cancel.mp3?a=123")).play().catch((e) => console.error("Error playing cancel.mp3?a=123:", e));
                 })();
             }
 
@@ -1527,7 +1527,7 @@ function setVAState(newState, ...args) {
                     console.log("STATE.WAKE_WORD_TRIGGERED: VAD already listening.");
                 }
                 (async () => {
-                    (await fetchAndCacheAudio(BASE + "/activate.mp3")).play().catch((e) => console.error("Error playing activate.mp3:", e));
+                    (await fetchAndCacheAudio(oldState === STATE.PLAYING_TTS ? BASE + "/cancel.mp3?a=123" : BASE + "/activate.mp3?a=123")).play().catch((e) => console.error("Error playing activate.mp3?a=123:", e));
                 })();
                 wakeWordTimeoutId = setTimeout(() => {
                     if (store.vaState === STATE.WAKE_WORD_TRIGGERED && !pipelineActive) {
@@ -1579,7 +1579,7 @@ function setVAState(newState, ...args) {
                 return;
             }
             (async () => {
-                (await fetchAndCacheAudio(BASE + "/analyzing.mp3")).play().catch((e) => console.error("Error playing analyzing.mp3:", e));
+                (await fetchAndCacheAudio(BASE + "/analyzing.mp3?a=123")).play().catch((e) => console.error("Error playing analyzing.mp3?a=123:", e));
             })();
             console.log("STATE.SENDING_AUDIO: Waiting for Home Assistant response.");
             // VAD should have been paused by onSpeechEnd
@@ -1715,9 +1715,9 @@ async function initializeApp() {
     HA_ASSIST_PIPELINE_NAME = getHAPipelineName();
 
     await Promise.all([
-        fetchAndCacheAudio(BASE + '/activate.mp3'),
-        fetchAndCacheAudio(BASE + '/cancel.mp3'),
-        fetchAndCacheAudio(BASE + '/analyzing.mp3')
+        fetchAndCacheAudio(BASE + '/activate.mp3?a=123'),
+        fetchAndCacheAudio(BASE + '/cancel.mp3?a=123'),
+        fetchAndCacheAudio(BASE + '/analyzing.mp3?a=123')
     ]).catch(e => console.warn('Failed to pre-cache audio files:', e));
 
     if (!HA_TOKEN || !HA_ASSIST_PIPELINE_NAME) {
