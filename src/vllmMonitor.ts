@@ -8,6 +8,11 @@ export class VLLMMonitor {
         timestamp: number;
     } | null = null;
 
+    // Prefill counter moves once per engine step (8000-token chunk, 3-8 s): EMA of
+    // the per-poll rate, time constant TAU (~63% after TAU, ~95% after 3*TAU).
+    private static readonly PREFILL_EMA_TAU_S = 8;
+    private prefillEma = 0;
+
     private metrics: VLLMMetrics | null = null;
     private metricsUrl = CONFIG.vllm.metricsUrl;
 
@@ -77,6 +82,7 @@ export class VLLMMonitor {
     transformMetrics(text: string): VLLMMetrics {
         const now = Date.now();
         const metrics = this.parseMetrics(text, [
+            'vllm:scheduled_ctx_tokens_total',
             'vllm:prompt_tokens_total',
             'vllm:prompt_tokens_cached_total',
             'vllm:generation_tokens_total',
@@ -85,10 +91,15 @@ export class VLLMMonitor {
         ]);
 
         // Get cumulative token counts
-        // Real prefill = prompt_tokens_total - prompt_tokens_cached_total (only actual GPU work)
+        // Real prefill (actual GPU work, cache hits excluded):
+        //  - vllm:scheduled_ctx_tokens_total: credited every engine step (per prefill chunk) —
+        //    our image's prefill-metrics patch, needs ITER_DETAILS=1. Live during long prompts.
+        //  - fallback prompt_tokens_total - prompt_tokens_cached_total: stock vLLM, only
+        //    credited when a request's prefill FINISHES (reads 0 for the whole prefill).
+        const scheduledCtx = metrics['vllm:scheduled_ctx_tokens_total'];
         const promptTokensTotal = metrics['vllm:prompt_tokens_total']?.value || 0;
         const promptTokensCached = metrics['vllm:prompt_tokens_cached_total']?.value || 0;
-        const prefillTokens = promptTokensTotal - promptTokensCached;
+        const prefillTokens = scheduledCtx ? scheduledCtx.value : promptTokensTotal - promptTokensCached;
         const generationTokens = metrics['vllm:generation_tokens_total']?.value || 0;
         const numRequestsRunning = metrics['vllm:num_requests_running']?.value || 0;
         const numRequestsWaiting = metrics['vllm:num_requests_waiting']?.value || 0;
@@ -105,8 +116,11 @@ export class VLLMMonitor {
 
                 // Only update rates if values increased (reset detection)
                 if (prefillDiff >= 0) {
-                    prefillTokensPerSecond = Math.round(prefillDiff / timeDiff);
+                    this.prefillEma += Math.min(1, timeDiff / VLLMMonitor.PREFILL_EMA_TAU_S) * (prefillDiff / timeDiff - this.prefillEma);
+                } else {
+                    this.prefillEma = 0;   // counter reset (restart)
                 }
+                prefillTokensPerSecond = Math.round(this.prefillEma);
                 if (generationDiff >= 0) {
                     generationTokensPerSecond = Math.round(generationDiff / timeDiff);
                 }
@@ -139,7 +153,7 @@ if (import.meta.main) {
     const raw1 = await monitor['collectData']();
     const parsed1 = monitor['parseMetrics'](raw1);
     console.log('First fetch:', {
-        prefill: parsed1['vllm:request_prefill_kv_computed_tokens_sum']?.value,
+        prefill: parsed1['vllm:scheduled_ctx_tokens_total']?.value,
         generation: parsed1['vllm:generation_tokens_total']?.value,
         running: parsed1['vllm:num_requests_running']?.value,
         waiting: parsed1['vllm:num_requests_waiting']?.value
@@ -150,7 +164,7 @@ if (import.meta.main) {
     const raw2 = await monitor['collectData']();
     const parsed2 = monitor['parseMetrics'](raw2);
     console.log('Second fetch:', {
-        prefill: parsed2['vllm:request_prefill_kv_computed_tokens_sum']?.value,
+        prefill: parsed2['vllm:scheduled_ctx_tokens_total']?.value,
         generation: parsed2['vllm:generation_tokens_total']?.value,
         running: parsed2['vllm:num_requests_running']?.value,
         waiting: parsed2['vllm:num_requests_waiting']?.value
